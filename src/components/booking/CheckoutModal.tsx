@@ -10,6 +10,7 @@ import {
   Clock,
   CreditCard,
   CheckCircle,
+  Check,
   Plus,
   Trash2,
   Percent,
@@ -97,6 +98,7 @@ export default function CheckoutModal({
   }, [isOpen, token, fetchAddresses]);
 
   const [step, setStep] = useState(0); // 0: Addons/Cart, 1: Schedule, 2: Address, 3: Payment
+  const modalBodyRef = useRef<HTMLDivElement>(null);
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState("");
@@ -224,9 +226,13 @@ export default function CheckoutModal({
 
   if (!isOpen) return null;
 
-  // Available Time Slots
-  const defaultTimeSlots = ["08:00 AM", "10:00 AM", "12:00 PM", "02:00 PM", "04:00 PM", "06:00 PM"];
-  const timeSlots = availableTimeSlots.length > 0 ? availableTimeSlots : defaultTimeSlots;
+  // Available Time Slots - 1-hour arrival intervals
+  const defaultTimeSlots = [
+    "08:00 AM", "09:00 AM", "10:00 AM", "11:00 AM",
+    "12:00 PM", "01:00 PM", "02:00 PM", "03:00 PM",
+    "04:00 PM", "05:00 PM", "06:00 PM", "07:00 PM"
+  ];
+  const timeSlots = availableTimeSlots.length >= 8 ? availableTimeSlots : defaultTimeSlots;
 
   // Generate next 6 dates starting today (Fallback)
   const getDates = () => {
@@ -276,6 +282,56 @@ export default function CheckoutModal({
     }
   };
 
+  const isStepCompleted = (idx: number) => {
+    if (idx === 0) return cart.length > 0;
+    if (idx === 1) return Boolean(selectedDate && selectedTimeSlot);
+    if (idx === 2) return Boolean((token || isLoggedIn) && selectedAddressId);
+    if (idx === 3) return step === 4;
+    return false;
+  };
+
+  const handleStepClick = (targetStep: number) => {
+    if (targetStep === step) return;
+
+    // Going backwards is always permitted
+    if (targetStep < step) {
+      setStep(targetStep);
+      modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    // Jumping forward: check requirements
+    if (targetStep >= 1 && cart.length === 0) {
+      toast.error("Cart is Empty", "Your cart is empty. Please select a service to continue.");
+      return;
+    }
+
+    if (targetStep >= 2 && (!selectedDate || !selectedTimeSlot)) {
+      toast.error("Schedule Required", "Please select a date and arrival time window.");
+      setStep(1);
+      modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (targetStep >= 3) {
+      if (!token || !isLoggedIn) {
+        toast.error("Sign In Required", "Without Sign In or Sign Up, you cannot select an address or book any service.");
+        setStep(2);
+        modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      if (!selectedAddressId) {
+        toast.error("Address Required", "Please select or add a service address.");
+        setStep(2);
+        modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+    }
+
+    setStep(targetStep);
+    modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const handleNextStep = () => {
     if (step === 0 && cart.length === 0) {
       toast.error("Cart is Empty", "Your cart is empty. Please select a service to continue.");
@@ -295,6 +351,7 @@ export default function CheckoutModal({
     }
     if (step < 3) {
       setStep(step + 1);
+      modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     } else {
       if (!token || !isLoggedIn) {
         toast.error("Authentication Required", "Please Sign In or Sign Up to book a service.");
@@ -308,6 +365,7 @@ export default function CheckoutModal({
           if (res.success && res.booking) {
             setCreatedBookingId(res.booking.id);
             setStep(4);
+            modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
             confetti({
               particleCount: 120,
               spread: 70,
@@ -326,6 +384,7 @@ export default function CheckoutModal({
   const handlePrevStep = () => {
     if (step > 0) {
       setStep(step - 1);
+      modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
@@ -353,10 +412,14 @@ export default function CheckoutModal({
 
   const memberDiscount = isMember ? Math.round(subtotal * 0.15) : 0;
   const discount = couponDiscount + memberDiscount;
+  const availableGstAmount = typeof cartPricing?.gst === "number" && cartPricing.gst > 0 ? Number(cartPricing.gst) : 0;
   const gstRate = cartPricing?.gstRate ?? 18;
-  const gst = cartPricing?.gst ?? (subtotal > 0 ? Math.round((subtotal - discount) * 0.18 * 100) / 100 : 0);
+  const hasGst = availableGstAmount > 0;
+  const gst = availableGstAmount;
   const convenienceFee = cartPricing?.convenienceFee ?? (subtotal > 0 ? 49 : 0);
-  const grandTotal = cartPricing && discount === 0 ? cartPricing.grandTotal : Math.max(0, Math.round((subtotal - discount + gst + convenienceFee) * 100) / 100);
+  const grandTotal = cartPricing && discount === 0 && !hasGst
+    ? cartPricing.grandTotal
+    : Math.max(0, Math.round((subtotal - discount + gst + convenienceFee) * 100) / 100);
   const total = grandTotal;
 
   return (
@@ -387,51 +450,75 @@ export default function CheckoutModal({
         </div>
 
         {/* Stepper Header Bar */}
-        {step < 4 && (
-          <div className="px-8 pt-6 pb-2 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/30 dark:bg-slate-950/20">
-            <div className="flex items-center justify-between relative max-w-lg mx-auto">
-              <div className="absolute left-[18px] right-[18px] top-[18px] h-0.5 bg-slate-200 dark:bg-slate-800 -translate-y-1/2 z-0" />
-              <div
-                className="absolute left-[18px] top-[18px] h-0.5 bg-accent-lux -translate-y-1/2 transition-all duration-500 z-0"
-                style={{ width: `calc(${(step / 3) * 100}% - ${(step / 3) * 36}px)` }}
-              />
+        {step < 4 && (() => {
+          const activeProgressIndex = Math.max(
+            step,
+            isStepCompleted(2) ? 3 : isStepCompleted(1) ? 2 : isStepCompleted(0) ? 1 : 0
+          );
 
-              {[
-                { label: "Cart", icon: ShoppingBag },
-                { label: "Schedule", icon: Calendar },
-                { label: "Address", icon: MapPin },
-                { label: "Payment", icon: CreditCard }
-              ].map((s, idx) => {
-                const Icon = s.icon;
-                const isActive = step >= idx;
-                const isCurrent = step === idx;
-                return (
-                  <div key={idx} className="flex flex-col items-center relative z-10">
-                    <div
-                      className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${isCurrent
-                          ? "bg-accent-lux border-accent-lux text-white scale-110 shadow-lg shadow-accent-lux/20"
-                          : isActive
-                            ? "bg-background border-accent-lux text-accent-lux"
-                            : "bg-background border-slate-200 dark:border-slate-800 text-slate-400"
-                        }`}
+          return (
+            <div className="px-8 pt-6 pb-2 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/30 dark:bg-slate-950/20">
+              <div className="flex items-center justify-between relative max-w-lg mx-auto">
+                <div className="absolute left-[18px] right-[18px] top-[18px] h-0.5 bg-slate-200 dark:bg-slate-800 -translate-y-1/2 z-0" />
+                <div
+                  className="absolute left-[18px] top-[18px] h-0.5 bg-accent-lux -translate-y-1/2 transition-all duration-500 z-0"
+                  style={{ width: `calc(${(activeProgressIndex / 3) * 100}% - ${(activeProgressIndex / 3) * 36}px)` }}
+                />
+
+                {[
+                  { label: "Cart", icon: ShoppingBag },
+                  { label: "Schedule", icon: Calendar },
+                  { label: "Address", icon: MapPin },
+                  { label: "Payment", icon: CreditCard }
+                ].map((s, idx) => {
+                  const Icon = s.icon;
+                  const isCompleted = isStepCompleted(idx);
+                  const isCurrent = step === idx;
+
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleStepClick(idx)}
+                      className="flex flex-col items-center relative z-10 group cursor-pointer focus:outline-none transition-transform"
+                      title={`Go to ${s.label}`}
                     >
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <span
-                      className={`text-[9px] font-black uppercase tracking-wider mt-2 transition-colors duration-500 ${isActive ? "text-accent-lux" : "text-slate-400"
+                      <div
+                        className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+                          isCurrent
+                            ? "bg-accent-lux border-accent-lux text-white scale-110 shadow-lg shadow-accent-lux/30 ring-4 ring-accent-lux/20 font-black"
+                            : isCompleted
+                              ? "bg-accent-lux border-accent-lux text-white hover:scale-105 shadow-sm"
+                              : "bg-background border-slate-200 dark:border-slate-800 text-slate-400 group-hover:border-slate-300 dark:group-hover:border-slate-700"
                         }`}
-                    >
-                      {s.label}
-                    </span>
-                  </div>
-                );
-              })}
+                      >
+                        {isCompleted && !isCurrent ? (
+                          <Check className="w-4 h-4 stroke-[3]" />
+                        ) : (
+                          <Icon className="w-4 h-4" />
+                        )}
+                      </div>
+                      <span
+                        className={`text-[9px] font-black uppercase tracking-wider mt-2 transition-colors duration-300 ${
+                          isCurrent
+                            ? "text-accent-lux font-black scale-105"
+                            : isCompleted
+                              ? "text-accent-lux font-bold"
+                              : "text-slate-400"
+                        }`}
+                      >
+                        {s.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Modal Body */}
-        <div className="p-6 sm:p-8 max-h-[70vh] overflow-y-auto">
+        <div ref={modalBodyRef} className="p-6 sm:p-8 max-h-[70vh] overflow-y-auto">
           {/* STEP 0: Cart Review */}
           {step === 0 && (
             <div className="space-y-6">
@@ -524,7 +611,7 @@ export default function CheckoutModal({
                   </h4>
                   <p className="text-xs text-slate-400 mt-1">Choose a preset day or pick any custom calendar date</p>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-3">
                     {dates.slice(0, 5).map((d) => {
                       const isPast = isPastDate(d.iso);
                       const isSelected = selectedDate === d.iso && !showCustomDate && !isCustomDateActive;
@@ -538,21 +625,21 @@ export default function CheckoutModal({
                             setSelectedDate(d.iso);
                             setShowCustomDate(false);
                           }}
-                          className={`relative p-3 rounded-2xl border flex flex-col items-center justify-center text-center transition-all duration-300 ${
+                          className={`relative py-2 px-1.5 sm:px-2 rounded-xl border flex flex-col items-center justify-center text-center transition-all duration-200 ${
                             isPast
                               ? "opacity-40 line-through bg-slate-100 dark:bg-slate-900/40 text-slate-400 border-slate-200 dark:border-slate-800 cursor-not-allowed pointer-events-none"
                               : isSelected
-                              ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-lg shadow-[#782860]/25 ring-2 ring-[#782860]/50 scale-105 cursor-pointer"
-                              : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 cursor-pointer"
+                              ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-md ring-2 ring-[#782860]/40 scale-103 cursor-pointer"
+                              : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer"
                             }`}
                         >
                           {isSelected && (
-                            <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                              <CheckCircle className="w-3.5 h-3.5 fill-emerald-500 text-white" />
+                            <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
+                              <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
                             </span>
                           )}
-                          <span className="text-[10px] font-bold uppercase tracking-wider">{d.label}</span>
-                          <span className="text-sm font-black mt-1">{d.dayNum}</span>
+                          <span className="text-[9px] font-bold uppercase tracking-wider opacity-85">{d.label}</span>
+                          <span className="text-sm font-extrabold my-0.5">{d.dayNum}</span>
                         </button>
                       );
                     })}
@@ -571,21 +658,21 @@ export default function CheckoutModal({
                             setSelectedDate(todayISO);
                           }
                         }}
-                        className={`w-full h-full p-3 rounded-2xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 ${isCustomDateActive || showCustomDate
-                            ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-lg shadow-[#782860]/25 ring-2 ring-[#782860]/50 scale-105"
-                            : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300"
+                        className={`w-full h-full py-2 px-1.5 sm:px-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 ${isCustomDateActive || showCustomDate
+                            ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-md ring-2 ring-[#782860]/40 scale-103"
+                            : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
                           }`}
                       >
                         {(isCustomDateActive || showCustomDate) && (
-                          <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                            <CheckCircle className="w-3.5 h-3.5 fill-emerald-500 text-white" />
+                          <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
+                            <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
                           </span>
                         )}
                         <div className="flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span className="text-[9px] font-bold uppercase">Custom</span>
+                          <Calendar className="w-3.5 h-3.5 text-current" />
+                          <span className="text-[9px] font-bold uppercase tracking-wider">Custom</span>
                         </div>
-                        <span className="text-[11px] font-extrabold mt-1 truncate max-w-full">
+                        <span className="text-[10px] font-extrabold mt-1 truncate max-w-full">
                           {isCustomDateActive && selectedDate ? selectedDate : "Calendar"}
                         </span>
                       </button>
@@ -615,10 +702,13 @@ export default function CheckoutModal({
                 </div>
 
                 <div className="pt-4 border-t border-slate-100 dark:border-slate-800 relative">
-                  <h4 className="font-extrabold text-sm text-foreground flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-[#782860]" /> Select Arrival Time Window
-                  </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mt-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-extrabold text-sm text-foreground flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-[#782860]" /> Select Arrival Time Window
+                    </h4>
+                    <span className="text-[11px] font-semibold text-slate-400">1-Hour Arrival Window</span>
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-2 mt-3">
                     {timeSlots.map((slot) => {
                       const isPast = isPastTime(slot, selectedDate);
                       const isSelected = selectedTimeSlot === slot && !isCustomTimeActive && !showCustomTime;
@@ -632,17 +722,17 @@ export default function CheckoutModal({
                             setSelectedTimeSlot(slot);
                             setShowCustomTime(false);
                           }}
-                          className={`relative p-3 rounded-2xl border text-center text-xs font-black transition-all duration-300 ${
+                          className={`relative py-2 px-2 rounded-xl border text-center text-xs font-bold transition-all duration-200 whitespace-nowrap ${
                             isPast
                               ? "opacity-40 line-through bg-slate-100 dark:bg-slate-900/40 text-slate-400 border-slate-200 dark:border-slate-800 cursor-not-allowed pointer-events-none"
                               : isSelected
-                              ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-lg shadow-[#782860]/25 ring-2 ring-[#782860]/50 scale-105 cursor-pointer"
-                              : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 cursor-pointer"
+                              ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-md ring-2 ring-[#782860]/40 scale-103 cursor-pointer"
+                              : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer"
                             }`}
                         >
                           {isSelected && (
-                            <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                              <CheckCircle className="w-3.5 h-3.5 fill-emerald-500 text-white" />
+                            <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
+                              <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
                             </span>
                           )}
                           {slot}
@@ -664,22 +754,19 @@ export default function CheckoutModal({
                             setSelectedTimeSlot("09:00 AM");
                           }
                         }}
-                        className={`w-full h-full p-3 rounded-2xl border text-center cursor-pointer flex flex-col items-center justify-center transition-all duration-300 ${isCustomTimeActive || showCustomTime
-                            ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-lg shadow-[#782860]/25 ring-2 ring-[#782860]/50 scale-105"
-                            : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300"
+                        className={`w-full h-full py-2 px-2 rounded-xl border text-center cursor-pointer flex items-center justify-center gap-1.5 transition-all duration-200 ${isCustomTimeActive || showCustomTime
+                            ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-md ring-2 ring-[#782860]/40 scale-103"
+                            : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
                           }`}
                       >
                         {(isCustomTimeActive || showCustomTime) && (
-                          <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                            <CheckCircle className="w-3.5 h-3.5 fill-emerald-500 text-white" />
+                          <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
+                            <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
                           </span>
                         )}
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span className="text-[9px] font-bold uppercase">Custom</span>
-                        </div>
-                        <span className="text-[11px] font-extrabold mt-0.5 truncate max-w-full">
-                          {isCustomTimeActive && selectedTimeSlot ? selectedTimeSlot : "Clock Dial"}
+                        <Clock className="w-3.5 h-3.5 text-current shrink-0" />
+                        <span className="text-xs font-bold truncate">
+                          {isCustomTimeActive && selectedTimeSlot ? selectedTimeSlot : "Custom"}
                         </span>
                       </button>
 
@@ -961,114 +1048,83 @@ export default function CheckoutModal({
                 )}
               </div> */}
 
-              {/* Payment Methods */}
-              <div className="text-left">
-                <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5 mb-4">
-                  <CreditCard className="w-4 h-4 text-[#782860]" /> Select Payment Method
+              {/* Payment Options List */}
+              <div className="text-left space-y-3">
+                <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5 mb-2">
+                  <CreditCard className="w-4 h-4 text-accent-lux" /> Select Payment Method
                 </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
-                  {(["pay_after", "upi", "card", "cod"] as const).map((method) => (
-                    <button
-                      key={method}
-                      type="button"
-                      onClick={() => setPaymentMethod(method)}
-                      className={`p-3 rounded-2xl text-xs font-extrabold capitalize text-center transition-all cursor-pointer border flex flex-col items-center justify-center gap-1 ${paymentMethod === method
-                          ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-md ring-2 ring-[#782860]/40 scale-105"
-                          : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-[#782860]/40"
-                        }`}
-                    >
-                      <span>
-                        {method === "pay_after" && "Pay After Service"}
-                        {method === "upi" && "Instant UPI"}
-                        {method === "card" && "Credit / Debit Card"}
-                        {method === "cod" && "Cash on Delivery"}
-                      </span>
-                      {method === "pay_after" && (
-                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.2 rounded-full ${paymentMethod === "pay_after" ? "bg-white/20 text-white" : "bg-emerald-500/10 text-emerald-600"
-                          }`}>
-                          Popular
+
+                {/* Pay After Service - Available & Selected */}
+                <div
+                  onClick={() => setPaymentMethod("pay_after")}
+                  className="flex items-start justify-between p-4 sm:p-5 rounded-2xl border-2 border-accent-lux bg-accent-lux/5 dark:bg-accent-lux/10 cursor-pointer transition-all shadow-xs"
+                >
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-5 h-5 rounded-full border-2 border-accent-lux flex items-center justify-center shrink-0 mt-0.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-accent-lux" />
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-accent-lux/15 text-accent-lux flex items-center justify-center shrink-0">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div className="text-left">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-extrabold text-foreground">Pay After Service</span>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25 text-[9px] font-black uppercase tracking-wider">
+                          Available
                         </span>
-                      )}
-                    </button>
-                  ))}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                        Pay only after your service is fully completed to your total satisfaction. No advance payment required.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Method Details */}
-                {paymentMethod === "pay_after" && (
-                  <div className="flex flex-col justify-center gap-3 p-5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-300 rounded-2xl text-left">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md">
-                        <ShieldCheck className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black uppercase tracking-wider text-emerald-950 dark:text-emerald-200">
-                          Pay After Service Completion
-                        </h4>
-                        <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">
-                          Zero Upfront Payment Required Today
+                {/* Instant UPI - Not Available */}
+                <div
+                  className="flex items-start justify-between p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 opacity-55 cursor-not-allowed select-none"
+                >
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center shrink-0 mt-0.5" />
+                    <div className="w-10 h-10 rounded-xl bg-slate-200/60 dark:bg-slate-800 text-slate-400 flex items-center justify-center shrink-0">
+                      <Smartphone className="w-5 h-5" />
+                    </div>
+                    <div className="text-left">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-slate-500 dark:text-slate-400">Instant UPI (GPay / PhonePe / Paytm)</span>
+                        <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300/50 dark:border-slate-700 text-[9px] font-black uppercase tracking-wider">
+                          Not Available
                         </span>
                       </div>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
+                        Online UPI payment is temporarily unavailable.
+                      </p>
                     </div>
-                    <p className="text-xs text-emerald-900/90 dark:text-emerald-300/80 mt-0.5 leading-relaxed">
-                      Inspect the completed work first! Pay comfortably via Cash, UPI, or Card directly to our verified professional after you are 100% satisfied.
-                    </p>
                   </div>
-                )}
+                </div>
 
-                {paymentMethod === "card" && (
-                  <div className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-slate-400">Card Number</label>
-                      <input
-                        type="text"
-                        placeholder="4111 2222 3333 4444"
-                        value={cardNumber}
-                        onChange={(e) => setCardNumber(e.target.value)}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-xl text-xs focus:outline-none focus:border-accent-lux"
-                      />
+                {/* Credit / Debit Card - Not Available */}
+                <div
+                  className="flex items-start justify-between p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 opacity-55 cursor-not-allowed select-none"
+                >
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center shrink-0 mt-0.5" />
+                    <div className="w-10 h-10 rounded-xl bg-slate-200/60 dark:bg-slate-800 text-slate-400 flex items-center justify-center shrink-0">
+                      <CreditCard className="w-5 h-5" />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-400">Expiry Date</label>
-                        <input
-                          type="text"
-                          placeholder="MM/YY"
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(e.target.value)}
-                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-xl text-xs focus:outline-none focus:border-accent-lux"
-                        />
+                    <div className="text-left">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-slate-500 dark:text-slate-400">Credit / Debit Card</span>
+                        <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300/50 dark:border-slate-700 text-[9px] font-black uppercase tracking-wider">
+                          Not Available
+                        </span>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-400">CVV</label>
-                        <input
-                          type="password"
-                          placeholder="***"
-                          value={cardCvv}
-                          onChange={(e) => setCardCvv(e.target.value)}
-                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-xl text-xs focus:outline-none focus:border-accent-lux"
-                        />
-                      </div>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
+                        Card payment gateway is temporarily unavailable.
+                      </p>
                     </div>
                   </div>
-                )}
-
-                {paymentMethod === "upi" && (
-                  <div className="flex flex-col items-center justify-center p-8 bg-slate-50 dark:bg-slate-950/20 border border-slate-200/10 rounded-2xl">
-                    <Smartphone className="w-12 h-12 text-accent-lux animate-bounce mb-4" />
-                    <p className="text-xs font-bold text-foreground text-center">Scan QR Code or Approve UPI Request</p>
-                    <p className="text-[10px] text-slate-400 text-center mt-1">A payment request will be sent to your UPI app on checkout.</p>
-                  </div>
-                )}
-
-                {paymentMethod === "cod" && (
-                  <div className="flex items-center gap-3 p-5 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-500 rounded-2xl text-left">
-                    <ShieldCheck className="w-5 h-5 shrink-0 text-amber-500" />
-                    <div>
-                      <p className="text-xs font-bold">Pay Cash or Card After Completion</p>
-                      <p className="text-[10px] text-slate-400 mt-1">Pay comfortably to our verified professionals once the services are finished.</p>
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
             </div>
           )}

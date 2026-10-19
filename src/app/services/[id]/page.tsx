@@ -40,6 +40,7 @@ import {
 } from "@/services/packageApi";
 import { fetchCustomerReviewsApi } from "@/services/reviewApi";
 import { fetchCustomerTrendingApi } from "@/services/trendingApi";
+import PackageDetailModal from "@/components/booking/PackageDetailModal";
 
 function ServicePackageImageItem({
   src,
@@ -605,6 +606,8 @@ function ServiceDetailPageContent({ params }: PageProps) {
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [showSavedOnly, setShowSavedOnly] = useState(false);
+  const [popupPackage, setPopupPackage] = useState<any | null>(null);
+  const isStandaloneDetailsView = searchParams.get("view") === "details";
   const [packageReviews, setPackageReviews] = useState<any[]>([]);
   const [loadingPackageReviews, setLoadingPackageReviews] = useState<boolean>(false);
 
@@ -729,6 +732,18 @@ function ServiceDetailPageContent({ params }: PageProps) {
     }
   }, [categoryIdParam, subParam, actParam, itemParam]);
 
+  // Auto-scroll to selected package card when navigating with itemParam on Step 3
+  useEffect(() => {
+    if (itemParam && stepView === "packages" && !loadingPackages) {
+      const el = document.getElementById(`package-card-${itemParam}`);
+      if (el) {
+        setTimeout(() => {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 200);
+      }
+    }
+  }, [itemParam, stepView, loadingPackages, apiPackages]);
+
   // Fetch individual package detail when itemParam query is present or serviceId is a valid package ObjectId
   useEffect(() => {
     let isCancelled = false;
@@ -838,6 +853,13 @@ function ServiceDetailPageContent({ params }: PageProps) {
             if (foundTrending.category?.id) {
               setResolvedCategoryId(foundTrending.category.id);
             }
+            if ((foundTrending as any).subCategory?.id) {
+              setSelectedSub((prev) => prev || (foundTrending as any).subCategory.id);
+            }
+            if ((foundTrending as any).serviceAction?.id) {
+              setSelectedAct((prev) => prev || (foundTrending as any).serviceAction.id);
+            }
+            setStepView("packages");
             setLoadingItemPackage(false);
             return;
           }
@@ -881,10 +903,20 @@ function ServiceDetailPageContent({ params }: PageProps) {
               includeInPackage: Array.isArray(pkgAny.includeInPackage) ? pkgAny.includeInPackage : (Array.isArray(matchedAny.includeInPackage) ? matchedAny.includeInPackage : []),
               excludeFromPackage: Array.isArray(pkgAny.excludeFromPackage) ? pkgAny.excludeFromPackage : (Array.isArray(matchedAny.excludeFromPackage) ? matchedAny.excludeFromPackage : []),
               addons: matchedAny.addons || pkgAny.addons || [],
+              category: matchedAny.category,
+              subCategory: matchedAny.subCategory,
+              serviceAction: matchedAny.serviceAction,
             });
             if (matchedAny.category?.id || matchedAny.category?._id) {
               setResolvedCategoryId(matchedAny.category?.id || matchedAny.category?._id);
             }
+            if (matchedAny.subCategory?.id || matchedAny.subCategory?._id) {
+              setSelectedSub((prev) => prev || matchedAny.subCategory?.id || matchedAny.subCategory?._id);
+            }
+            if (matchedAny.serviceAction?.id || matchedAny.serviceAction?._id) {
+              setSelectedAct((prev) => prev || matchedAny.serviceAction?.id || matchedAny.serviceAction?._id);
+            }
+            setStepView("packages");
           }
         }
       } catch (err) {
@@ -931,6 +963,9 @@ function ServiceDetailPageContent({ params }: PageProps) {
         const res = await fetchCustomerSubCategoriesApi(targetCatId);
         if (res.success && res.data && !isCancelled) {
           setApiSubCategories(res.data);
+          if (itemParam && res.data.length > 0) {
+            setSelectedSub((prev) => prev || res.data![0]._id);
+          }
         } else if (!isCancelled) {
           setApiSubCategories([]);
         }
@@ -948,17 +983,18 @@ function ServiceDetailPageContent({ params }: PageProps) {
     return () => {
       isCancelled = true;
     };
-  }, [categoryIdParam, serviceId, normalizedSlug]);
+  }, [categoryIdParam, serviceId, normalizedSlug, itemParam]);
 
   // Fetch live service actions when subcategory is selected (or immediately if category has no subcategories)
   const hasSubCategories = apiSubCategories.length > 0;
 
   const effectiveStepView: "subcategory" | "action" | "packages" = React.useMemo(() => {
+    if (itemParam) return "packages";
     if (!loadingSubCategories && !hasSubCategories) {
       return stepView === "subcategory" ? "action" : stepView;
     }
     return stepView;
-  }, [hasSubCategories, loadingSubCategories, stepView]);
+  }, [hasSubCategories, loadingSubCategories, stepView, itemParam]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -992,6 +1028,9 @@ function ServiceDetailPageContent({ params }: PageProps) {
       const res = await fetchCustomerServiceActionsApi(catId, subCatId);
       if (res.success && res.data && !isCancelled) {
         setApiServiceActions(res.data);
+        if (itemParam && res.data.length > 0) {
+          setSelectedAct((prev) => prev || res.data![0]._id);
+        }
       } else if (!isCancelled) {
         setApiServiceActions([]);
       }
@@ -1082,16 +1121,21 @@ function ServiceDetailPageContent({ params }: PageProps) {
   }
 
   // API-based Subcategory and Service Action matching
+  const isObjectId = (val?: string | null) => Boolean(val && /^[0-9a-fA-F]{24}$/.test(val));
   const matchedApiSub = apiSubCategories.find((s) => s._id === selectedSub || s.name === selectedSub);
   const currentSub = {
     id: selectedSub,
-    name: matchedApiSub ? matchedApiSub.name : (selectedSub || ""),
+    name: matchedApiSub
+      ? matchedApiSub.name
+      : (fetchedItemPackage?.subCategory?.name || (isObjectId(selectedSub) ? "Selected Type" : (selectedSub || ""))),
   };
 
   const matchedApiAct = apiServiceActions.find((a) => a._id === selectedAct || a.serviceAction === selectedAct);
   const currentAct = {
     id: selectedAct,
-    name: matchedApiAct ? matchedApiAct.serviceAction : (selectedAct || ""),
+    name: matchedApiAct
+      ? matchedApiAct.serviceAction
+      : (fetchedItemPackage?.serviceAction?.name || (isObjectId(selectedAct) ? "Selected Action" : (selectedAct || ""))),
   };
 
   const availablePackagesList = apiPackages.map((item: any) => {
@@ -1366,9 +1410,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
   }
 
   // Calculate pricing summary details
-  const taxAmount = Math.round(activePrice * 0.18);
   const convenienceFee = 49;
-  const grandTotal = activePrice + taxAmount + convenienceFee;
 
   return (
     <>
@@ -1414,7 +1456,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
       `}} />
       <Header />
 
-      {itemParam ? (
+      {isStandaloneDetailsView ? (
         loadingItemPackage || !selectedItem ? (
           <main 
             style={{ paddingTop: "var(--header-total-height, 8.5rem)" }}
@@ -2338,6 +2380,25 @@ function ServiceDetailPageContent({ params }: PageProps) {
                             };
                           });
 
+                          if (fetchedItemPackage) {
+                            const fetchedId = String(fetchedItemPackage.id || fetchedItemPackage._id || "");
+                            const alreadyExists = currentActionPackages.some((p) => String(p.id) === fetchedId);
+                            if (!alreadyExists && fetchedId) {
+                              currentActionPackages.unshift({
+                                id: fetchedId,
+                                name: fetchedItemPackage.name || "Package Service",
+                                price: fetchedItemPackage.price || 0,
+                                originalPrice: fetchedItemPackage.originalPrice,
+                                duration: fetchedItemPackage.duration || 60,
+                                subtitle: fetchedItemPackage.subtitle || "",
+                                description: fetchedItemPackage.description || `${fetchedItemPackage.name} execution by certified Helpmate specialists.`,
+                                image: fetchedItemPackage.image || "",
+                                addons: fetchedItemPackage.addons || [],
+                                raw: fetchedItemPackage,
+                              });
+                            }
+                          }
+
                           const userSavedPackages = (bookmarkedPackages || []).map((bmItem: any) => {
                             const isPkgObj = typeof bmItem.package === "object" && bmItem.package !== null;
                             const pkg = isPkgObj ? bmItem.package : bmItem;
@@ -2382,14 +2443,19 @@ function ServiceDetailPageContent({ params }: PageProps) {
                                   const isAdded = cart.some((c) => c.id === pkgId || c.itemId === pkgId || c.id === `${service?.id}-${selectedSub}-${selectedAct}-${item.id}`);
                                   const isItemSaved = isBookmarked(pkgId);
                                   const finalImgSrc = item.image || (pkgId ? `/api/media/package/${pkgId}/image` : "");
+                                  const isTargetItem = Boolean(itemParam && (String(pkgId) === String(itemParam) || String(item.id) === String(itemParam)));
                                   return (
                                     <div
                                       key={item.id}
+                                      id={`package-card-${pkgId}`}
                                       onClick={() => {
-                                        const catQuery = resolvedCategoryId || categoryIdParam ? `&categoryId=${encodeURIComponent(resolvedCategoryId || categoryIdParam || "")}` : "";
-                                        router.push(`/services/${service?.category || serviceId}?sub=${selectedSub}&act=${selectedAct}&item=${item.id}${catQuery}`);
+                                        setPopupPackage(item);
                                       }}
-                                      className="bg-white dark:bg-slate-900/60 p-4 rounded-2xl flex flex-col sm:flex-row gap-4 transition-all duration-300 hover:scale-[1.01] hover:shadow-md group text-left shadow-sm relative overflow-hidden cursor-pointer hover:border hover:border-accent-lux/30"
+                                      className={`p-4 rounded-2xl flex flex-col sm:flex-row gap-4 transition-all duration-300 hover:scale-[1.01] hover:shadow-md group text-left shadow-sm relative overflow-hidden cursor-pointer ${
+                                        isTargetItem
+                                          ? "bg-pink-50/40 dark:bg-pink-950/20 ring-2 ring-accent-lux shadow-md border border-accent-lux/40"
+                                          : "bg-white dark:bg-slate-900/60 border border-transparent hover:border hover:border-accent-lux/30"
+                                      }`}
                                     >
                                       {/* Left Side: Image */}
                                       <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0 relative group/image">
@@ -2422,9 +2488,16 @@ function ServiceDetailPageContent({ params }: PageProps) {
                                       <div className="flex-1 min-w-0 flex flex-col justify-between">
                                         <div>
                                           <div className="flex justify-between items-start gap-2">
-                                            <h4 className="font-extrabold text-[13px] sm:text-[14px] text-foreground leading-snug group-hover:text-accent-lux transition-colors truncate">
-                                              {item.name}
-                                            </h4>
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <h4 className="font-extrabold text-[13px] sm:text-[14px] text-foreground leading-snug group-hover:text-accent-lux transition-colors truncate">
+                                                {item.name}
+                                              </h4>
+                                              {isTargetItem && (
+                                                <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent-lux text-white shrink-0 shadow-xs">
+                                                  Selected
+                                                </span>
+                                              )}
+                                            </div>
                                             <div className="text-right shrink-0">
                                               <span className="text-[13px] sm:text-[14px] font-black text-accent-lux font-sans">
                                                 ₹{item.price}
@@ -2478,10 +2551,10 @@ function ServiceDetailPageContent({ params }: PageProps) {
                                         {/* Action Buttons */}
                                         <div className="flex justify-end items-center gap-2 mt-4 pt-2">
                                           <button
+                                            type="button"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              const catQuery = resolvedCategoryId || categoryIdParam ? `&categoryId=${encodeURIComponent(resolvedCategoryId || categoryIdParam || "")}` : "";
-                                              router.push(`/services/${service?.category || serviceId}?sub=${selectedSub}&act=${selectedAct}&item=${item.id}${catQuery}`);
+                                              setPopupPackage(item);
                                             }}
                                             className="px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[9px] sm:text-[10px] transition-colors cursor-pointer"
                                           >
@@ -2657,10 +2730,14 @@ function ServiceDetailPageContent({ params }: PageProps) {
                         const itemsSubtotalVal = cartPricing ? cartPricing.itemsSubtotal : cart.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0);
                         const addonSubtotalVal = cartPricing ? cartPricing.addonSubtotal : cart.reduce((sum, item) => sum + getItemAddonTotal(item), 0);
                         const subtotalVal = cartPricing ? cartPricing.subtotal : (itemsSubtotalVal + addonSubtotalVal);
+                        const availableGstVal = typeof cartPricing?.gst === "number" && cartPricing.gst > 0 ? Number(cartPricing.gst) : 0;
                         const gstRate = cartPricing?.gstRate ?? 18;
-                        const gstVal = cartPricing ? cartPricing.gst : Math.round(subtotalVal * 0.18 * 100) / 100;
+                        const hasGst = availableGstVal > 0;
+                        const gstVal = availableGstVal;
                         const feeVal = cartPricing ? cartPricing.convenienceFee : (subtotalVal > 0 ? 49 : 0);
-                        const grandVal = cartPricing ? cartPricing.grandTotal : Math.round((subtotalVal + gstVal + feeVal) * 100) / 100;
+                        const grandVal = cartPricing && !hasGst
+                          ? cartPricing.grandTotal
+                          : Math.round((subtotalVal + gstVal + feeVal) * 100) / 100;
 
                         return (
                           <div className="border-t border-slate-100 dark:border-slate-850 pt-4 space-y-2 text-xs text-slate-555 dark:text-slate-455 font-semibold font-sans">
@@ -2680,10 +2757,12 @@ function ServiceDetailPageContent({ params }: PageProps) {
                               <span>Subtotal</span>
                               <span>₹{subtotalVal}</span>
                             </div>
-                            <div className="flex justify-between">
-                              <span>Taxes &amp; GST ({gstRate}%)</span>
-                              <span className="text-foreground font-bold">₹{gstVal}</span>
-                            </div>
+                            {hasGst && gstVal > 0 && (
+                              <div className="flex justify-between">
+                                <span>Taxes &amp; GST ({gstRate}%)</span>
+                                <span className="text-foreground font-bold">₹{gstVal}</span>
+                              </div>
+                            )}
                             <div className="flex justify-between">
                               <span>Convenience Fee</span>
                               <span className="text-foreground font-bold">{feeVal > 0 ? `₹${feeVal}` : "FREE"}</span>
@@ -2742,7 +2821,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
       )}
 
       {/* Sticky Bottom Actions Bar (for details layout on mobile screens) */}
-      {itemParam && selectedItem && (
+      {isStandaloneDetailsView && selectedItem && (
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200/40 dark:border-slate-800/60 py-3.5 px-6 flex items-center justify-between shadow-[0_-8px_30px_rgb(0,0,0,0.06)] lg:hidden font-sans">
           <div className="flex flex-col text-left">
             <span className="text-[9px] uppercase font-bold text-slate-455 tracking-wider">Selected Service</span>
@@ -2796,7 +2875,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
       )}
 
       {/* Sticky Bottom Actions Bar (for wizard layout on mobile screens) */}
-      {(!itemParam || !selectedItem) && (
+      {!isStandaloneDetailsView && (
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200/40 dark:border-slate-800/60 py-3.5 px-6 flex items-center justify-between shadow-[0_-8px_30px_rgb(0,0,0,0.06)] lg:hidden">
           <div className="flex flex-col text-left">
             <span className="text-[9px] uppercase font-bold text-slate-455 tracking-wider">Booking Customizer</span>
@@ -2833,6 +2912,61 @@ function ServiceDetailPageContent({ params }: PageProps) {
           </div>
         </div>
       )}
+
+      {/* Package Details Popup Modal (opened during Category > Subcategory > Action > Package wizard) */}
+      <PackageDetailModal
+        isOpen={!!popupPackage}
+        onClose={() => {
+          setPopupPackage(null);
+          if (typeof window !== "undefined" && window.location.search.includes("item=")) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("item");
+            window.history.replaceState(null, "", url.toString());
+          }
+        }}
+        packageItem={popupPackage}
+        categoryName={activeCategory?.categoryName || service?.name || service?.category}
+        subCategoryName={currentSub?.name}
+        serviceActionName={currentAct?.name}
+        isAdded={Boolean(
+          popupPackage &&
+            cart.some(
+              (c) =>
+                (popupPackage.id && (String(c.id) === String(popupPackage.id) || String(c.itemId) === String(popupPackage.id))) ||
+                (popupPackage._id && (String(c.id) === String(popupPackage._id) || String(c.itemId) === String(popupPackage._id))) ||
+                c.id === `${service?.id}-${selectedSub}-${selectedAct}-${popupPackage.id}`
+            )
+        )}
+        onAddToCart={(e, itm) => handleItemAddToCart(e, itm)}
+        onBookNow={(e, itm) => handleItemBookNow(e, itm)}
+        isBookmarked={Boolean(
+          popupPackage &&
+            bookmarkedPackageIds.some(
+              (bId) =>
+                String(bId) === String(popupPackage.id) ||
+                String(bId) === String(popupPackage._id)
+            )
+        )}
+        onToggleBookmark={(pkgId, e) => {
+          if (!isLoggedIn && !token) {
+            addNotification("Login Required", "Please log in to save or bookmark packages.", "warning");
+            return;
+          }
+          const isSaved = Boolean(
+            popupPackage &&
+              bookmarkedPackageIds.some(
+                (bId) => String(bId) === String(pkgId)
+              )
+          );
+          if (!isSaved) triggerSmallConfetti(e, ['#801C6E', '#48073d', '#A21CAF']);
+          toggleBookmark(pkgId);
+          addNotification(
+            isSaved ? "Bookmark Removed" : "Bookmarked Package",
+            isSaved ? `${popupPackage?.name || "Package"} removed from your saved list.` : `${popupPackage?.name || "Package"} saved for fast booking.`,
+            "info"
+          );
+        }}
+      />
 
       <Footer />
     </>

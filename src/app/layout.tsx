@@ -4,6 +4,7 @@ import "./globals.css";
 import Providers from "@/components/common/Providers";
 import CursorGlow from "@/components/common/CursorGlow";
 import FloatingHelp from "@/components/common/FloatingHelp";
+import ScrollToTop from "@/components/common/ScrollToTop";
 
 import NextTopLoader from "nextjs-toploader";
 
@@ -69,7 +70,8 @@ export default function RootLayout({
         <Providers>
           <CursorGlow />
           {children}
-          <FloatingHelp />
+          {/* <FloatingHelp /> */}
+          <ScrollToTop />
           <ToastContainer />
         </Providers>
       </body>

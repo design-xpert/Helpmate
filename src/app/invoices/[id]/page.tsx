@@ -375,12 +375,14 @@ export default function InvoiceDetailsPage() {
                         Rs. {Number(invoice.billing.platformFee || 0).toFixed(2)}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center text-xs sm:text-sm text-slate-600 dark:text-slate-400 pb-1">
-                      <span>GST</span>
-                      <span className="font-semibold text-slate-900 dark:text-white">
-                        Rs. {Number(invoice.billing.gst || 0).toFixed(2)}
-                      </span>
-                    </div>
+                    {Number(invoice.billing.gst || 0) > 0 && (
+                      <div className="flex justify-between items-center text-xs sm:text-sm text-slate-600 dark:text-slate-400 pb-1">
+                        <span>GST</span>
+                        <span className="font-semibold text-slate-900 dark:text-white">
+                          Rs. {Number(invoice.billing.gst || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    )}
 
                     {/* GRAND TOTAL Banner Box matching image */}
                     <div className="bg-[#4e0e47] text-white p-4 sm:p-5 rounded-2xl flex items-center justify-between shadow-md">

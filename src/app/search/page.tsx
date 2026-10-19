@@ -44,6 +44,10 @@ import {
   fetchCustomerTrendingApi,
   TrendingPackageItem,
 } from "@/services/trendingApi";
+import {
+  fetchWebsiteSpotlightApi,
+  SpotlightPackageItem,
+} from "@/services/spotlightApi";
 import { startTopLoader, stopTopLoader } from "@/utils/loader";
 
 // Helper for matching category by ObjectId, exact name, or partial name
@@ -176,13 +180,14 @@ function SearchPageContent() {
 
   const { wishlist, toggleWishlist, addNotification, addToCart, cart, token, isLoggedIn } = useStore();
 
-  // View Mode: "categories" | "trending" | "packages"
-  const [viewMode, setViewMode] = useState<"categories" | "trending" | "packages">(() => {
+  // View Mode: "categories" | "trending" | "packages" | "spotlight"
+  const [viewMode, setViewMode] = useState<"categories" | "trending" | "packages" | "spotlight">(() => {
     const view = searchParams.get("view");
     const type = searchParams.get("type");
     const cat = searchParams.get("categoryId") || searchParams.get("category");
     const q = searchParams.get("q");
     if (type === "trending" || view === "trending") return "trending";
+    if (type === "spotlight" || view === "spotlight") return "spotlight";
     if (view === "packages" || cat || q) return "packages";
     return "categories";
   });
@@ -209,6 +214,10 @@ function SearchPageContent() {
   const [trendingPackages, setTrendingPackages] = useState<CustomerPackageItem[]>([]);
   const [isLoadingTrending, setIsLoadingTrending] = useState<boolean>(false);
 
+  // Spotlight Packages State (Only fetched when viewMode === "spotlight")
+  const [spotlightPackages, setSpotlightPackages] = useState<CustomerPackageItem[]>([]);
+  const [isLoadingSpotlight, setIsLoadingSpotlight] = useState<boolean>(false);
+
   // Sync viewMode & filters from URL searchParams
   useEffect(() => {
     const view = searchParams.get("view");
@@ -224,6 +233,8 @@ function SearchPageContent() {
 
     if (type === "trending" || view === "trending" || trending === "true") {
       setViewMode("trending");
+    } else if (type === "spotlight" || view === "spotlight") {
+      setViewMode("spotlight");
     } else if (view === "packages" || q || cat || sub) {
       setViewMode("packages");
     } else if (view === "categories" || type === "categories") {
@@ -302,6 +313,55 @@ function SearchPageContent() {
     }
 
     loadTrending();
+    return () => {
+      isMounted = false;
+    };
+  }, [viewMode, token]);
+
+  // Fetch Spotlight Packages from GET /api/website/spotlight when viewMode === "spotlight"
+  useEffect(() => {
+    let isMounted = true;
+    async function loadSpotlight() {
+      if (viewMode !== "spotlight") return;
+      setIsLoadingSpotlight(true);
+      startTopLoader();
+      try {
+        const res = await fetchWebsiteSpotlightApi(token);
+        if (isMounted && res.success && res.data && Array.isArray(res.data)) {
+          const mapped: CustomerPackageItem[] = res.data.map((item) => ({
+            package: {
+              id: item.packageId,
+              name: item.packageName,
+              subtitle: item.subtitle,
+              description: item.description,
+              price: item.price,
+              originalPrice: item.originalPrice,
+              discountPercentage: item.discountPercentage,
+              duration: item.duration || 60,
+              imageUrl: item.imageUrl || item.thumbnailUrl,
+              includeInPackage: item.includeInPackage || [],
+              excludeFromPackage: item.excludeFromPackage || [],
+            },
+            category: item.category,
+            subCategory: item.subCategory,
+            serviceAction: item.serviceAction,
+            addons: [],
+          }));
+          setSpotlightPackages(mapped);
+        } else if (isMounted) {
+          setSpotlightPackages([]);
+        }
+      } catch (err) {
+        console.error("Error loading spotlight packages:", err);
+      } finally {
+        if (isMounted) {
+          setIsLoadingSpotlight(false);
+          stopTopLoader();
+        }
+      }
+    }
+
+    loadSpotlight();
     return () => {
       isMounted = false;
     };
@@ -411,14 +471,14 @@ function SearchPageContent() {
       setSearchSuggestions([]);
       return;
     }
-    const targetPool = viewMode === "trending" ? trendingPackages : apiPackages;
+    const targetPool = viewMode === "trending" ? trendingPackages : viewMode === "spotlight" ? spotlightPackages : apiPackages;
     const filtered = targetPool.filter((item) =>
       item.package.name.toLowerCase().includes(query.toLowerCase()) ||
       item.category?.name.toLowerCase().includes(query.toLowerCase()) ||
       item.subCategory?.name.toLowerCase().includes(query.toLowerCase())
     );
     setSearchSuggestions(filtered.slice(0, 4));
-  }, [query, apiPackages, trendingPackages, viewMode]);
+  }, [query, apiPackages, trendingPackages, spotlightPackages, viewMode]);
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -554,6 +614,20 @@ function SearchPageContent() {
     return matchesQuery && matchesCategory;
   });
 
+  // Filter spotlight packages locally if search query or category chip selected
+  const displaySpotlightPackages = spotlightPackages.filter((item) => {
+    const matchesQuery = !query.trim() ||
+      item.package.name.toLowerCase().includes(query.toLowerCase()) ||
+      item.category?.name.toLowerCase().includes(query.toLowerCase()) ||
+      item.subCategory?.name.toLowerCase().includes(query.toLowerCase());
+
+    const matchesCategory = !selectedCat ||
+      item.category?.id === selectedCat ||
+      item.category?.name.toLowerCase().includes(selectedCat.toLowerCase());
+
+    return matchesQuery && matchesCategory;
+  });
+
   const containerVariants: Variants = {
     hidden: { opacity: 0 },
     show: {
@@ -586,6 +660,8 @@ function SearchPageContent() {
                     ? "Verified Categories"
                     : viewMode === "trending"
                     ? "Best Sellers Only"
+                    : viewMode === "spotlight"
+                    ? "Flagship Experiences"
                     : "Service Catalog"}
                 </span>
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight">
@@ -593,6 +669,8 @@ function SearchPageContent() {
                     ? "All Service Categories"
                     : viewMode === "trending"
                     ? "Trending Services"
+                    : viewMode === "spotlight"
+                    ? "In the Spotlight"
                     : "All Packages & Services"}
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -600,6 +678,8 @@ function SearchPageContent() {
                     ? "Browse all service categories. Select any category to open step-by-step options."
                     : viewMode === "trending"
                     ? "Showing exclusively verified trending packages booked by Varanasi residents this week."
+                    : viewMode === "spotlight"
+                    ? "Flagship curated experiences and season-special home solutions handpicked for you."
                     : "Browse verified professional packages delivered by certified specialists in Varanasi."}
                 </p>
               </div>
@@ -618,6 +698,20 @@ function SearchPageContent() {
                   }`}
                 >
                   <Layers className="w-3.5 h-3.5" /> All Categories
+                </button>
+
+                <button
+                  onClick={() => {
+                    setViewMode("spotlight");
+                    router.push("/search?view=spotlight");
+                  }}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                    viewMode === "spotlight"
+                      ? "bg-[#48073d] text-white dark:bg-accent-lux shadow-sm"
+                      : "text-slate-600 dark:text-slate-300 hover:text-foreground"
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" /> Spotlight
                 </button>
 
                 <button
@@ -933,6 +1027,231 @@ function SearchPageContent() {
                             <div className="flex items-center gap-1.5 shrink-0">
                               <button
                                 onClick={(e) => handleAddToCart(e, item)}
+                                disabled={isCartAdded}
+                                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer ${
+                                  isCartAdded
+                                    ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 cursor-not-allowed opacity-90"
+                                    : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+                                }`}
+                              >
+                                {isCartAdded ? "Added ✓" : "+ Cart"}
+                              </button>
+
+                              <button
+                                onClick={(e) => handleBookNow(e, item)}
+                                className="px-3.5 py-1.5 rounded-xl text-[11px] font-bold bg-accent-lux hover:bg-accent-lux/90 text-white active:scale-95 transition-all shadow-md flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>Book Now</span> <ChevronRight className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* VIEW MODE: SHOW IN THE SPOTLIGHT */}
+          {viewMode === "spotlight" && (
+            <div className="py-8 space-y-6">
+
+              {/* Header banner for Spotlight view */}
+              <div className="glass-panel p-6 rounded-3xl border border-accent-lux/20 bg-gradient-to-r from-accent-lux/10 via-purple-900/10 to-slate-900/40 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-accent-lux/20 border border-accent-lux/30 flex items-center justify-center text-accent-lux shrink-0">
+                    <Sparkles className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-extrabold text-foreground">In the Spotlight Packages</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Flagship curated experiences and season-special solutions</p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-extrabold uppercase px-3 py-1 rounded-full bg-accent-lux text-white shrink-0 shadow-sm">
+                  {displaySpotlightPackages.length} Spotlight Items
+                </span>
+              </div>
+
+              {/* Dynamic Category Filter Chips for Spotlight */}
+              {dynamicCategories.length > 0 && (
+                <div className="py-1 flex flex-wrap gap-2 items-center">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5 mr-1">
+                    <Sparkles className="w-3.5 h-3.5 text-accent-lux" /> Filter Spotlight:
+                  </span>
+                  <button
+                    onClick={() => setSelectedCat("")}
+                    className={`text-[11px] font-semibold px-3.5 py-1.5 rounded-full border transition-all cursor-pointer ${
+                      selectedCat === ""
+                        ? "bg-[#48073d] text-white dark:bg-accent-lux border-[#48073d] dark:border-accent-lux"
+                        : "bg-white dark:bg-slate-900 border-slate-200/60 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-accent-lux"
+                    }`}
+                  >
+                    All Spotlight
+                  </button>
+                  {dynamicCategories.map((cat) => {
+                    const isActive = selectedCat === cat._id || selectedCat === cat.categoryName;
+                    return (
+                      <button
+                        key={cat._id}
+                        onClick={() => setSelectedCat(isActive ? "" : cat._id)}
+                        className={`text-[11px] font-semibold px-3.5 py-1.5 rounded-full border transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-[#48073d] text-white dark:bg-accent-lux border-[#48073d] dark:border-accent-lux"
+                            : "bg-white dark:bg-slate-900 border-slate-200/60 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-accent-lux"
+                        }`}
+                      >
+                        {cat.categoryName}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {isLoadingSpotlight ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {[1, 2, 3, 4, 5, 6].map((n) => (
+                    <div key={n} className="bg-white dark:bg-slate-900/60 rounded-2xl p-4 space-y-4 border border-slate-100 dark:border-slate-800 animate-pulse">
+                      <div className="h-44 bg-slate-200 dark:bg-slate-800 rounded-xl" />
+                      <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-3/4" />
+                      <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-1/2" />
+                      <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-full" />
+                    </div>
+                  ))}
+                </div>
+              ) : displaySpotlightPackages.length === 0 ? (
+                <div className="glass-panel p-12 text-center flex flex-col items-center max-w-lg mx-auto border border-slate-200/10 rounded-3xl">
+                  <Sparkles className="w-12 h-12 text-accent-lux mb-4 opacity-70" />
+                  <h3 className="font-bold text-base text-foreground">No Spotlight Packages Found</h3>
+                  <p className="text-xs text-slate-500 mt-2 max-w-xs leading-relaxed">
+                    No spotlight packages available for this specific category filter at the moment.
+                  </p>
+                  <button
+                    onClick={() => setSelectedCat("")}
+                    className="mt-6 px-6 py-2.5 rounded-full bg-accent-lux text-white text-xs font-bold shadow-md cursor-pointer hover:brightness-110"
+                  >
+                    View All Spotlight Packages
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {displaySpotlightPackages.map((item, idx) => {
+                    const pkg = item.package;
+                    const isFavorited = wishlist.includes(pkg.id);
+                    const isCartAdded = cart.some((c) => c.id === pkg.id || c.itemId === pkg.id);
+                    const categorySlug = item.category?.name
+                      ? item.category.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+                      : (item.category?.id || pkg.id);
+
+                    const catId = item.category?.id || (item.category as any)?._id;
+                    const subId = item.subCategory?.id;
+                    const actId = item.serviceAction?.id;
+                    const qp = new URLSearchParams();
+                    if (catId) qp.set("categoryId", catId);
+                    if (subId) qp.set("sub", subId);
+                    if (actId) qp.set("act", actId);
+                    qp.set("item", pkg.id);
+
+                    return (
+                      <motion.div
+                        key={pkg.id}
+                        initial={{ opacity: 0, y: 16 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: idx * 0.04 }}
+                        onClick={() => router.push(`/services/${categorySlug}?${qp.toString()}`)}
+                        className="group relative bg-white dark:bg-slate-900/80 rounded-2xl border border-accent-lux/20 dark:border-slate-800 hover:border-accent-lux/50 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden cursor-pointer hover:-translate-y-1"
+                      >
+                        {/* Card Top Banner / Media */}
+                        <div className="relative h-48 sm:h-52 w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+                          <PackageImageDisplay imageUrl={pkg.imageUrl} name={pkg.name} />
+
+                          {/* Overlay Gradients */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/20" />
+
+                          {/* Spotlight Badge */}
+                          <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 z-10">
+                            <span className="text-[9px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-accent-lux text-white shadow-md flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 fill-white" /> Spotlight
+                            </span>
+                            {item.category?.name && (
+                              <span className="text-[9px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-850 dark:text-slate-100 backdrop-blur-md shadow-sm">
+                                {item.category.name}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Wishlist / Bookmark Toggle */}
+                          <button
+                            onClick={(e) => handleWishlistToggle(e, pkg.id, pkg.name)}
+                            className={`absolute top-3 right-3 w-8 h-8 rounded-full backdrop-blur-md flex items-center justify-center transition-all shadow-sm z-10 ${
+                              isFavorited || pkg.isBookmarked
+                                ? "bg-rose-500 text-white"
+                                : "bg-white/80 dark:bg-slate-900/80 text-slate-600 dark:text-slate-300 hover:text-rose-500 hover:bg-white"
+                            }`}
+                          >
+                            <Heart className={`w-3.5 h-3.5 ${isFavorited || pkg.isBookmarked ? "fill-white" : ""}`} />
+                          </button>
+
+                          {/* Discount Badge */}
+                          {pkg.discountPercentage && pkg.discountPercentage > 0 ? (
+                            <span className="absolute bottom-3 left-3 bg-emerald-500 text-white text-[9px] font-extrabold px-2.5 py-0.5 rounded-full shadow-md tracking-wider">
+                              {pkg.discountPercentage}% OFF
+                            </span>
+                          ) : null}
+
+                          {/* Duration Badge */}
+                          {pkg.duration && (
+                            <span className="absolute bottom-3 right-3 text-[9px] font-bold text-slate-200 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-md flex items-center gap-1 font-sans">
+                              <Clock className="w-3 h-3 text-amber-400" /> {formatDuration(pkg.duration)}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Card Body */}
+                        <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
+                          <div>
+                            <h3 className="text-sm font-extrabold text-slate-900 dark:text-white group-hover:text-accent-lux transition-colors leading-snug">
+                              {pkg.name}
+                            </h3>
+
+                            {pkg.subtitle && (
+                              <p className="text-[11px] font-semibold text-accent-lux mt-0.5 line-clamp-1">
+                                {pkg.subtitle}
+                              </p>
+                            )}
+
+                            {pkg.description && (
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed line-clamp-2">
+                                {pkg.description}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Card Footer: Price & Actions */}
+                          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <div className="flex items-baseline gap-1.5">
+                                <span className="text-base font-extrabold text-foreground font-sans">
+                                  ₹{pkg.price}
+                                </span>
+                                {pkg.originalPrice && pkg.originalPrice > pkg.price && (
+                                  <span className="text-xs text-slate-400 line-through font-sans">
+                                    ₹{pkg.originalPrice}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                                ✓ Verified Pros
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAddToCart(e, item);
+                                }}
                                 disabled={isCartAdded}
                                 className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer ${
                                   isCartAdded

@@ -9,6 +9,7 @@ import {
   Clock,
   CreditCard,
   CheckCircle,
+  Check,
   Plus,
   Trash2,
   Percent,
@@ -248,9 +249,13 @@ function BookingContent() {
   // Simulated booking tracking
   const [createdBookingId, setCreatedBookingId] = useState<string | null>(null);
 
-  // Available Time Slots
-  const defaultTimeSlots = ["08:00 AM", "10:00 AM", "12:00 PM", "02:00 PM", "04:00 PM", "06:00 PM"];
-  const timeSlots = availableTimeSlots.length > 0 ? availableTimeSlots : defaultTimeSlots;
+  // Available Time Slots - 1-hour arrival intervals
+  const defaultTimeSlots = [
+    "08:00 AM", "09:00 AM", "10:00 AM", "11:00 AM",
+    "12:00 PM", "01:00 PM", "02:00 PM", "03:00 PM",
+    "04:00 PM", "05:00 PM", "06:00 PM", "07:00 PM"
+  ];
+  const timeSlots = availableTimeSlots.length >= 8 ? availableTimeSlots : defaultTimeSlots;
 
   // Generate next 6 dates starting today (Fallback)
   const getDates = () => {
@@ -380,6 +385,56 @@ function BookingContent() {
     }
   };
 
+  const isStepCompleted = (idx: number) => {
+    if (idx === 0) return cart.length > 0;
+    if (idx === 1) return Boolean(selectedDate && selectedTimeSlot);
+    if (idx === 2) return Boolean((token || isLoggedIn) && selectedAddressId);
+    if (idx === 3) return step === 4;
+    return false;
+  };
+
+  const handleStepClick = (targetStep: number) => {
+    if (targetStep === step) return;
+
+    // Going backwards is always permitted
+    if (targetStep < step) {
+      setStep(targetStep);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    // Jumping forward: check requirements
+    if (targetStep >= 1 && cart.length === 0) {
+      toast.error("Cart is Empty", "Please select a service before proceeding.");
+      return;
+    }
+
+    if (targetStep >= 2 && (!selectedDate || !selectedTimeSlot)) {
+      toast.error("Schedule Required", "Please select your preferred date and time window first.");
+      setStep(1);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (targetStep >= 3) {
+      if (!token || !isLoggedIn) {
+        toast.error("Sign In Required", "Please sign in or create an account to proceed.");
+        setStep(2);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      if (!selectedAddressId) {
+        toast.error("Address Required", "Please select or add a service address to proceed.");
+        setStep(2);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+    }
+
+    setStep(targetStep);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   // Pricing math
   const matchedBooking = step === 4 && createdBookingId
     ? bookings.find(b => b.id === createdBookingId)
@@ -412,10 +467,12 @@ function BookingContent() {
   const memberDiscount = (!matchedBooking && isMember) ? Math.round(subtotal * 0.15) : 0;
   const discount = couponDiscount + memberDiscount;
 
+  const availableGstAmount = matchedBooking
+    ? Number((matchedBooking as any).billing?.gst ?? (matchedBooking as any).gst ?? 0)
+    : (typeof cartPricing?.gst === "number" && cartPricing.gst > 0 ? Number(cartPricing.gst) : 0);
   const gstRate = cartPricing?.gstRate ?? 18;
-  const gst = matchedBooking
-    ? 0
-    : (cartPricing?.gst ?? (subtotal > 0 ? Math.round((subtotal - discount) * 0.18 * 100) / 100 : 0));
+  const hasGst = availableGstAmount > 0;
+  const gst = availableGstAmount;
 
   const convenienceFee = matchedBooking
     ? 0
@@ -423,7 +480,7 @@ function BookingContent() {
 
   const grandTotal = matchedBooking
     ? matchedBooking.finalAmount
-    : (cartPricing && discount === 0
+    : (cartPricing && discount === 0 && !hasGst
       ? cartPricing.grandTotal
       : Math.max(0, Math.round((subtotal - discount + gst + convenienceFee) * 100) / 100));
 
@@ -453,49 +510,73 @@ function BookingContent() {
           )}
 
           {/* Stepper Status Tracker */}
-          {step < 4 && (
-            <div className="mb-10 max-w-3xl mx-auto">
-              <div className="flex items-center justify-between relative">
-                {/* Connector line */}
-                <div className="absolute left-[18px] right-[18px] top-[18px] h-0.5 bg-slate-200 dark:bg-slate-800 -translate-y-1/2 z-0" />
-                <div
-                  className="absolute left-[18px] top-[18px] h-0.5 bg-accent-lux -translate-y-1/2 transition-all duration-500 z-0"
-                  style={{ width: `calc(${(step / 3) * 100}% - ${(step / 3) * 36}px)` }}
-                />
+          {step < 4 && (() => {
+            const activeProgressIndex = Math.max(
+              step,
+              isStepCompleted(2) ? 3 : isStepCompleted(1) ? 2 : isStepCompleted(0) ? 1 : 0
+            );
 
-                {[
-                  { label: "Cart", icon: ShoppingBag },
-                  { label: "Schedule", icon: Calendar },
-                  { label: "Address", icon: MapPin },
-                  { label: "Payment", icon: CreditCard }
-                ].map((s, idx) => {
-                  const Icon = s.icon;
-                  const isActive = step >= idx;
-                  const isCurrent = step === idx;
-                  return (
-                    <div key={idx} className="flex flex-col items-center relative z-10">
-                      <div
-                        className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${isCurrent
-                            ? "bg-accent-lux border-accent-lux text-white scale-110 shadow-lg shadow-accent-lux/20"
-                            : isActive
-                              ? "bg-background border-accent-lux text-accent-lux"
-                              : "bg-background border-slate-200 dark:border-slate-800 text-slate-400"
-                          }`}
+            return (
+              <div className="mb-10 max-w-3xl mx-auto">
+                <div className="flex items-center justify-between relative">
+                  {/* Connector line */}
+                  <div className="absolute left-[18px] right-[18px] top-[18px] h-0.5 bg-slate-200 dark:bg-slate-800 -translate-y-1/2 z-0" />
+                  <div
+                    className="absolute left-[18px] top-[18px] h-0.5 bg-accent-lux -translate-y-1/2 transition-all duration-500 z-0"
+                    style={{ width: `calc(${(activeProgressIndex / 3) * 100}% - ${(activeProgressIndex / 3) * 36}px)` }}
+                  />
+
+                  {[
+                    { label: "Cart", icon: ShoppingBag },
+                    { label: "Schedule", icon: Calendar },
+                    { label: "Address", icon: MapPin },
+                    { label: "Payment", icon: CreditCard }
+                  ].map((s, idx) => {
+                    const Icon = s.icon;
+                    const isCompleted = isStepCompleted(idx);
+                    const isCurrent = step === idx;
+
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleStepClick(idx)}
+                        className="flex flex-col items-center relative z-10 group cursor-pointer focus:outline-none transition-transform"
+                        title={`Go to ${s.label}`}
                       >
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <span
-                        className={`text-[9px] font-black uppercase tracking-wider mt-2 transition-colors duration-500 ${isActive ? "text-accent-lux" : "text-slate-400"
+                        <div
+                          className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+                            isCurrent
+                              ? "bg-accent-lux border-accent-lux text-white scale-110 shadow-lg shadow-accent-lux/30 ring-4 ring-accent-lux/20 font-black"
+                              : isCompleted
+                                ? "bg-accent-lux border-accent-lux text-white hover:scale-105 shadow-sm"
+                                : "bg-background border-slate-200 dark:border-slate-800 text-slate-400 group-hover:border-slate-300 dark:group-hover:border-slate-700"
                           }`}
-                      >
-                        {s.label}
-                      </span>
-                    </div>
-                  );
-                })}
+                        >
+                          {isCompleted && !isCurrent ? (
+                            <Check className="w-4 h-4 stroke-[3]" />
+                          ) : (
+                            <Icon className="w-4 h-4" />
+                          )}
+                        </div>
+                        <span
+                          className={`text-[9px] font-black uppercase tracking-wider mt-2 transition-colors duration-300 ${
+                            isCurrent
+                              ? "text-accent-lux font-black scale-105"
+                              : isCompleted
+                                ? "text-accent-lux font-bold"
+                                : "text-slate-400"
+                          }`}
+                        >
+                          {s.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* Left Panel Stepper Content */}
@@ -661,28 +742,22 @@ function BookingContent() {
                     const isCustomTimeActive = !!(selectedTimeSlot && (!isPresetTime || showCustomTime));
 
                     return (
-                      <div className="bg-white dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl shadow-slate-200/50 dark:shadow-none space-y-8 text-left">
+                      <div className="space-y-6 text-left">
                         {/* Section Header */}
-                        <div className="border-b border-slate-100 dark:border-slate-800 pb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="border-b border-slate-100 dark:border-slate-800 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="px-2.5 py-0.5 rounded-full bg-[#782860]/10 text-[#782860] dark:bg-[#782860]/20 dark:text-purple-300 text-[10px] font-black tracking-wider uppercase">
-                                Step 2 of 4
-                              </span>
-                              <span className="text-xs text-slate-400 font-medium">• Fast Technician Dispatch</span>
-                            </div>
-                            <h2 className="text-xl sm:text-2xl font-black text-foreground tracking-tight flex items-center gap-2.5">
-                              <Calendar className="w-6 h-6 text-[#782860]" /> Schedule Arrival Slot
+                            <h2 className="text-xl font-extrabold text-foreground tracking-tight flex items-center gap-2">
+                              <Calendar className="w-5 h-5 text-accent-lux" /> Schedule Arrival Slot
                             </h2>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Select your preferred date & time window for expert home service.</p>
+                            <p className="text-xs text-slate-450 mt-1">Select your preferred date & 1-hour arrival window for service.</p>
                           </div>
 
                           {/* Selected Slot Quick Badge */}
                           {selectedDate && selectedTimeSlot && (
-                            <div className="self-start sm:self-auto px-4 py-2 bg-slate-50 dark:bg-slate-800/90 border border-slate-200/70 dark:border-slate-700 rounded-2xl flex items-center gap-3">
+                            <div className="self-start sm:self-auto px-3.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-2.5">
                               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                               <div className="text-left">
-                                <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block">Selected Arrival</span>
+                                <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400 block leading-tight">Selected Arrival</span>
                                 <span className="text-xs font-black text-foreground">
                                   {selectedDate} @ {selectedTimeSlot}
                                 </span>
@@ -692,15 +767,15 @@ function BookingContent() {
                         </div>
 
                         {/* DATE SELECTION SECTION */}
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                           <div className="flex items-center justify-between">
-                            <h3 className="text-sm font-extrabold text-foreground flex items-center gap-2">
-                              <Calendar className="w-4 h-4 text-[#782860]" /> 1. Select Service Date
+                            <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-accent-lux" /> 1. Select Service Date
                             </h3>
-                            <span className="text-[11px] font-semibold text-slate-400">Available Next 7 Days</span>
+                            <span className="text-[11px] font-semibold text-slate-400">Next 7 Days</span>
                           </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                             {dates.slice(0, 5).map((d) => {
                               const isPast = isPastDate(d.iso);
                               const isSelected = selectedDate === d.iso && !showCustomDate && !isCustomDateActive;
@@ -714,22 +789,21 @@ function BookingContent() {
                                     setSelectedDate(d.iso);
                                     setShowCustomDate(false);
                                   }}
-                                  className={`relative p-4 rounded-2xl border flex flex-col items-center justify-center text-center transition-all duration-300 ${
+                                  className={`relative py-2 px-1.5 sm:px-2 rounded-xl border flex flex-col items-center justify-center text-center transition-all duration-200 ${
                                     isPast
                                       ? "opacity-40 line-through bg-slate-100 dark:bg-slate-900/40 text-slate-400 border-slate-200 dark:border-slate-800 cursor-not-allowed pointer-events-none"
                                       : isSelected
-                                      ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-lg shadow-[#782860]/25 ring-2 ring-[#782860]/50 scale-105 cursor-pointer"
+                                      ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-md ring-2 ring-[#782860]/40 scale-103 cursor-pointer"
                                       : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer"
                                     }`}
                                 >
                                   {isSelected && (
-                                    <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                                      <CheckCircle className="w-3.5 h-3.5 fill-emerald-500 text-white" />
+                                    <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
+                                      <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
                                     </span>
                                   )}
-                                  <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-85">{d.label}</span>
-                                  <span className="text-lg font-black mt-1">{d.dayNum}</span>
-                                  <span className="text-[10px] font-bold opacity-75 mt-0.5">{d.fullDate.split(",")[0]}</span>
+                                  <span className="text-[9px] font-bold uppercase tracking-wider opacity-85">{d.label}</span>
+                                  <span className="text-sm font-extrabold my-0.5">{d.dayNum}</span>
                                 </button>
                               );
                             })}
@@ -748,21 +822,21 @@ function BookingContent() {
                                     setSelectedDate(todayISO);
                                   }
                                 }}
-                                className={`w-full h-full p-4 rounded-2xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 ${isCustomDateActive || showCustomDate
-                                    ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-lg shadow-[#782860]/25 ring-2 ring-[#782860]/50 scale-105"
+                                className={`w-full h-full py-2 px-1.5 sm:px-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 ${isCustomDateActive || showCustomDate
+                                    ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-md ring-2 ring-[#782860]/40 scale-103"
                                     : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
                                   }`}
                               >
                                 {(isCustomDateActive || showCustomDate) && (
-                                  <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                                    <CheckCircle className="w-3.5 h-3.5 fill-emerald-500 text-white" />
+                                  <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
+                                    <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
                                   </span>
                                 )}
-                                <div className="flex items-center gap-1.5">
-                                  <Calendar className="w-4 h-4 text-current" />
-                                  <span className="text-[10px] font-extrabold uppercase tracking-wider">Custom Date</span>
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="w-3.5 h-3.5 text-current" />
+                                  <span className="text-[9px] font-bold uppercase tracking-wider">Custom</span>
                                 </div>
-                                <span className="text-xs font-black mt-1 truncate max-w-full">
+                                <span className="text-[10px] font-extrabold mt-1 truncate max-w-full">
                                   {isCustomDateActive && selectedDate ? selectedDate : "Calendar"}
                                 </span>
                               </button>
@@ -792,15 +866,15 @@ function BookingContent() {
                         </div>
 
                         {/* TIME SELECTION SECTION */}
-                        <div className="pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                        <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
                           <div className="flex items-center justify-between">
-                            <h3 className="text-sm font-extrabold text-foreground flex items-center gap-2">
-                              <Clock className="w-4 h-4 text-[#782860]" /> 2. Select Arrival Time Window
+                            <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-accent-lux" /> 2. Select Arrival Time Window
                             </h3>
-                            <span className="text-[11px] font-semibold text-slate-400">2-Hour Arrival Slot</span>
+                            <span className="text-[11px] font-semibold text-slate-400">1-Hour Arrival Window</span>
                           </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-2">
                             {timeSlots.map((slot) => {
                               const isPast = isPastTime(slot, selectedDate);
                               const isSelected = selectedTimeSlot === slot && !isCustomTimeActive && !showCustomTime;
@@ -814,17 +888,17 @@ function BookingContent() {
                                     setSelectedTimeSlot(slot);
                                     setShowCustomTime(false);
                                   }}
-                                  className={`relative p-3.5 rounded-2xl border text-center text-xs font-black transition-all duration-300 ${
+                                  className={`relative py-2 px-2 rounded-xl border text-center text-xs font-bold transition-all duration-200 whitespace-nowrap ${
                                     isPast
                                       ? "opacity-40 line-through bg-slate-100 dark:bg-slate-900/40 text-slate-400 border-slate-200 dark:border-slate-800 cursor-not-allowed pointer-events-none"
                                       : isSelected
-                                      ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-lg shadow-[#782860]/25 ring-2 ring-[#782860]/50 scale-105 cursor-pointer"
+                                      ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-md ring-2 ring-[#782860]/40 scale-103 cursor-pointer"
                                       : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer"
                                     }`}
                                 >
                                   {isSelected && (
-                                    <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                                      <CheckCircle className="w-3.5 h-3.5 fill-emerald-500 text-white" />
+                                    <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
+                                      <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
                                     </span>
                                   )}
                                   {slot}
@@ -846,22 +920,19 @@ function BookingContent() {
                                     setSelectedTimeSlot("09:00 AM");
                                   }
                                 }}
-                                className={`w-full h-full p-3.5 rounded-2xl border text-center cursor-pointer flex flex-col items-center justify-center transition-all duration-300 ${isCustomTimeActive || showCustomTime
-                                    ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-lg shadow-[#782860]/25 ring-2 ring-[#782860]/50 scale-105"
+                                className={`w-full h-full py-2 px-2 rounded-xl border text-center cursor-pointer flex items-center justify-center gap-1.5 transition-all duration-200 ${isCustomTimeActive || showCustomTime
+                                    ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-md ring-2 ring-[#782860]/40 scale-103"
                                     : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
                                   }`}
                               >
                                 {(isCustomTimeActive || showCustomTime) && (
-                                  <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                                    <CheckCircle className="w-3.5 h-3.5 fill-emerald-500 text-white" />
+                                  <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
+                                    <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
                                   </span>
                                 )}
-                                <div className="flex items-center gap-1.5 mb-0.5">
-                                  <Clock className="w-3.5 h-3.5 text-current" />
-                                  <span className="text-[10px] font-extrabold uppercase tracking-wider">Custom Time</span>
-                                </div>
-                                <span className="text-xs font-black truncate max-w-full">
-                                  {isCustomTimeActive && selectedTimeSlot ? selectedTimeSlot : "Clock Dial"}
+                                <Clock className="w-3.5 h-3.5 text-current shrink-0" />
+                                <span className="text-xs font-bold truncate">
+                                  {isCustomTimeActive && selectedTimeSlot ? selectedTimeSlot : "Custom"}
                                 </span>
                               </button>
 
@@ -891,24 +962,24 @@ function BookingContent() {
                         </div>
 
                         {/* IMPORTANT AVAILABILITY NOTE BANNER */}
-                        <div className="pt-6 border-t border-slate-100 dark:border-slate-800 bg-amber-50/70 dark:bg-amber-950/25 p-5 rounded-2xl border border-amber-200/80 dark:border-amber-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-left">
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
-                              <Info className="w-5 h-5" />
+                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 bg-amber-50/60 dark:bg-amber-950/20 p-3 rounded-xl border border-amber-200/70 dark:border-amber-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-left">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                              <Info className="w-3.5 h-3.5" />
                             </div>
                             <div>
-                              <h4 className="text-xs font-black text-amber-950 dark:text-amber-200 uppercase tracking-wider flex items-center gap-1.5">
-                                Important Availability Note
+                              <h4 className="text-[11px] font-black text-amber-950 dark:text-amber-200 uppercase tracking-wider flex items-center gap-1.5">
+                                Real-Time Arrival Window
                               </h4>
-                              <p className="text-xs text-amber-900/90 dark:text-amber-300/80 mt-1 leading-relaxed">
-                                Please note: Available dates and arrival time slots may vary depending on service type, location, and real-time partner availability. Schedules are updated dynamically and may differ over time.
+                              <p className="text-[11px] text-amber-900/90 dark:text-amber-300/80 mt-0.5 leading-relaxed">
+                                Arrival time slots update dynamically based on real-time specialist availability in your area.
                               </p>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                            <span className="px-3.5 py-1.5 bg-amber-500/10 text-amber-800 dark:text-amber-300 font-extrabold text-[11px] rounded-xl flex items-center gap-1.5 border border-amber-500/20 shadow-sm">
-                              <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Dynamic Slots
+                            <span className="px-2.5 py-0.5 bg-amber-500/10 text-amber-800 dark:text-amber-300 font-extrabold text-[10px] rounded-lg flex items-center gap-1 border border-amber-500/20">
+                              <Sparkles className="w-3 h-3 text-amber-500" /> Live Scheduling
                             </span>
                           </div>
                         </div>
@@ -918,7 +989,7 @@ function BookingContent() {
 
                   {/* STEP 2: Premium Address UI & Form */}
                   {step === 2 && (
-                    <div className="bg-white dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl shadow-slate-200/50 dark:shadow-none space-y-6 text-left">
+                    <div className="space-y-6 text-left">
                       {!token || !isLoggedIn ? (
                         <div className="p-8 sm:p-10 bg-gradient-to-br from-slate-900 via-[#48073d] to-slate-950 text-white rounded-3xl border border-purple-500/30 shadow-2xl text-center space-y-6">
                           <div className="w-16 h-16 rounded-3xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center mx-auto text-purple-300 shadow-inner">
@@ -1128,113 +1199,78 @@ function BookingContent() {
                         <p className="text-xs text-slate-450 mt-1">Select authorization method. No amount will be debited until work is done.</p>
                       </div>
 
-                      {/* Payment Options & Details Grid */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-
-                        {/* Payment Option Tabs (Left) */}
-                        <div className="md:col-span-1 flex flex-col bg-slate-50/50 dark:bg-slate-900/30 border-r border-slate-200 dark:border-slate-800">
-                          {(["pay_after", "upi", "card", "cod"] as const).map((method) => (
-                            <button
-                              key={method}
-                              type="button"
-                              onClick={() => setPaymentMethod(method)}
-                              className={`py-4 px-4 text-xs font-bold capitalize text-left transition-all cursor-pointer border-b border-slate-200 dark:border-slate-800 last:border-b-0 flex items-center justify-between ${paymentMethod === method
-                                  ? "bg-white dark:bg-slate-900 border-l-4 border-l-[#782860] text-[#782860] dark:text-purple-300 font-extrabold"
-                                  : "border-l-4 border-l-transparent text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-                                }`}
-                            >
-                              <span>
-                                {method === "pay_after" && "Pay After Service"}
-                                {method === "upi" && "Instant UPI"}
-                                {method === "card" && "Credit / Debit Card"}
-                                {method === "cod" && "Cash on Delivery"}
-                              </span>
-                              {method === "pay_after" && (
-                                <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[8px] font-black uppercase">
-                                  Popular
+                      {/* Payment Options List */}
+                      <div className="space-y-3">
+                        {/* Pay After Service - Available & Selected */}
+                        <div
+                          onClick={() => setPaymentMethod("pay_after")}
+                          className="flex items-start justify-between p-4 sm:p-5 rounded-2xl border-2 border-accent-lux bg-accent-lux/5 dark:bg-accent-lux/10 cursor-pointer transition-all shadow-xs"
+                        >
+                          <div className="flex items-start gap-3.5">
+                            <div className="w-5 h-5 rounded-full border-2 border-accent-lux flex items-center justify-center shrink-0 mt-0.5">
+                              <div className="w-2.5 h-2.5 rounded-full bg-accent-lux" />
+                            </div>
+                            <div className="w-10 h-10 rounded-xl bg-accent-lux/15 text-accent-lux flex items-center justify-center shrink-0">
+                              <ShieldCheck className="w-5 h-5" />
+                            </div>
+                            <div className="text-left">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-extrabold text-foreground">Pay After Service</span>
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25 text-[9px] font-black uppercase tracking-wider">
+                                  Available
                                 </span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Payment Details Container (Right) */}
-                        <div className="md:col-span-2 p-6 bg-white dark:bg-slate-900 flex flex-col justify-center">
-                          {paymentMethod === "pay_after" && (
-                            <div className="flex flex-col justify-center gap-3 p-6 bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-300 rounded-2xl text-left h-full">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md">
-                                  <ShieldCheck className="w-5 h-5" />
-                                </div>
-                                <div>
-                                  <h4 className="text-xs font-black uppercase tracking-wider text-emerald-950 dark:text-emerald-200">
-                                    Pay After Service Completion
-                                  </h4>
-                                  <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">
-                                    Zero Upfront Payment Today
-                                  </span>
-                                </div>
                               </div>
-                              <p className="text-xs text-emerald-900/90 dark:text-emerald-300/80 mt-1 leading-relaxed">
-                                Inspect the completed work first! You can pay comfortably via Cash, UPI, or Card directly to our verified technician after you are 100% satisfied.
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                                Pay only after your service is fully completed to your total satisfaction. No advance payment required.
                               </p>
                             </div>
-                          )}
+                          </div>
+                        </div>
 
-                          {paymentMethod === "card" && (
-                            <div className="space-y-4">
-                              <div className="space-y-1">
-                                <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Card Number</label>
-                                <input
-                                  type="text"
-                                  placeholder="4111 2222 3333 4444"
-                                  value={cardNumber}
-                                  onChange={(e) => setCardNumber(e.target.value)}
-                                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-4 py-3 rounded-xl text-xs focus:outline-none focus:border-accent-lux"
-                                />
-                              </div>
-                              <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                  <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Expiry Date</label>
-                                  <input
-                                    type="text"
-                                    placeholder="MM/YY"
-                                    value={cardExpiry}
-                                    onChange={(e) => setCardExpiry(e.target.value)}
-                                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-4 py-3 rounded-xl text-xs focus:outline-none focus:border-accent-lux"
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">CVV</label>
-                                  <input
-                                    type="password"
-                                    placeholder="***"
-                                    value={cardCvv}
-                                    onChange={(e) => setCardCvv(e.target.value)}
-                                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-4 py-3 rounded-xl text-xs focus:outline-none focus:border-accent-lux"
-                                  />
-                                </div>
-                              </div>
+                        {/* Instant UPI - Not Available */}
+                        <div
+                          className="flex items-start justify-between p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 opacity-55 cursor-not-allowed select-none"
+                        >
+                          <div className="flex items-start gap-3.5">
+                            <div className="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center shrink-0 mt-0.5" />
+                            <div className="w-10 h-10 rounded-xl bg-slate-200/60 dark:bg-slate-800 text-slate-400 flex items-center justify-center shrink-0">
+                              <Smartphone className="w-5 h-5" />
                             </div>
-                          )}
+                            <div className="text-left">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-bold text-slate-500 dark:text-slate-400">Instant UPI (GPay / PhonePe / Paytm)</span>
+                                <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300/50 dark:border-slate-700 text-[9px] font-black uppercase tracking-wider">
+                                  Not Available
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
+                                Online UPI payment is temporarily unavailable.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
 
-                          {paymentMethod === "upi" && (
-                            <div className="flex flex-col items-center justify-center p-8 bg-slate-50 dark:bg-slate-950/20 border border-slate-200/10 rounded-2xl h-full">
-                              <Smartphone className="w-12 h-12 text-accent-lux animate-pulse mb-4" />
-                              <p className="text-xs font-bold text-foreground text-center">Scan QR Code or Approve UPI Request</p>
-                              <p className="text-[10px] text-slate-400 text-center mt-1">A payment request notification will trigger in your UPI application.</p>
+                        {/* Credit / Debit Card - Not Available */}
+                        <div
+                          className="flex items-start justify-between p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 opacity-55 cursor-not-allowed select-none"
+                        >
+                          <div className="flex items-start gap-3.5">
+                            <div className="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center shrink-0 mt-0.5" />
+                            <div className="w-10 h-10 rounded-xl bg-slate-200/60 dark:bg-slate-800 text-slate-400 flex items-center justify-center shrink-0">
+                              <CreditCard className="w-5 h-5" />
                             </div>
-                          )}
-
-                          {paymentMethod === "cod" && (
-                            <div className="flex items-center gap-3 p-5 bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 rounded-2xl text-left h-full">
-                              <ShieldCheck className="w-5 h-5 shrink-0 text-amber-500" />
-                              <div>
-                                <p className="text-xs font-bold">Pay Cash or Card After Completion</p>
-                                <p className="text-[10px] text-slate-400 mt-1">Pay comfortably to our verified professionals once the services are finished.</p>
+                            <div className="text-left">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-bold text-slate-500 dark:text-slate-400">Credit / Debit Card</span>
+                                <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300/50 dark:border-slate-700 text-[9px] font-black uppercase tracking-wider">
+                                  Not Available
+                                </span>
                               </div>
+                              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
+                                Card payment gateway is temporarily unavailable.
+                              </p>
                             </div>
-                          )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1356,10 +1392,12 @@ function BookingContent() {
                       </div>
                     )}
 
-                    <div className="flex justify-between items-center text-slate-500">
-                      <span>Varanasi Regional Tax (GST {gstRate}%)</span>
-                      <span className="font-bold text-foreground">₹{gst}</span>
-                    </div>
+                    {hasGst && gst > 0 && (
+                      <div className="flex justify-between items-center text-slate-500">
+                        <span>Taxes &amp; GST ({gstRate}%)</span>
+                        <span className="font-bold text-foreground">₹{gst}</span>
+                      </div>
+                    )}
 
                     <div className="flex justify-between items-center text-slate-500">
                       <span>Convenience & Dispatch Fee</span>

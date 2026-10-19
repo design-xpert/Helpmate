@@ -635,11 +635,11 @@ export const useStore = create<AppState>()(
             const rawItems = res.data.items || res.data.cart?.items || (res.data as any).data?.items || [];
             let mappedItems: CartItem[] = rawItems.map((item: any) => {
               const pkgObj = typeof item.package === "object" && item.package ? item.package : (typeof item.packageId === "object" && item.packageId ? item.packageId : {});
-              const pkgId = typeof item.package === "string" 
-                ? item.package 
-                : typeof item.packageId === "string" 
-                ? item.packageId 
-                : (pkgObj._id || pkgObj.id || item.itemId || item._id);
+              const pkgId = typeof item.package === "string"
+                ? item.package
+                : typeof item.packageId === "string"
+                  ? item.packageId
+                  : (pkgObj._id || pkgObj.id || item.itemId || item._id);
 
               const pkgName = pkgObj.packageName || pkgObj.name || pkgObj.title || item.name || null;
               const pkgPrice = typeof pkgObj.price === "number" ? pkgObj.price : (typeof item.price === "number" ? item.price : item.packageTotal || 0);
@@ -736,7 +736,7 @@ export const useStore = create<AppState>()(
         const itemQuantity = quantityOverride || (item as any).quantity || 1;
 
         set((state) => {
-          const existingIndex = state.cart.findIndex((i) => 
+          const existingIndex = state.cart.findIndex((i) =>
             (i.id && String(i.id) === String(targetId)) ||
             (i.itemId && String(i.itemId) === String(targetId))
           );
@@ -1113,42 +1113,42 @@ export const useStore = create<AppState>()(
 
               const items = item.services && item.services.length > 0
                 ? item.services.map((srv, idx) => {
-                    const pkgObj = (srv.package as any) || {};
-                    const pkgId = pkgObj._id || pkgObj.id || (srv as any).packageId || `pkg-${idx}`;
-                    const pkgRev = pkgObj.review || (srv as any).review;
-                    let mappedPkgRev: CartItem["review"] = undefined;
-                    if (pkgRev && typeof pkgRev === "object" && (pkgRev._id || pkgRev.id || pkgRev.rating)) {
-                      mappedPkgRev = {
-                        reviewId: pkgRev._id || pkgRev.id,
-                        rating: Number(pkgRev.rating) || 5,
-                        comment: pkgRev.review || pkgRev.comment || "",
-                        dateCreated: pkgRev.createdAt ? new Date(pkgRev.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Just now"
-                      };
-                    }
-
-                    return {
-                      id: pkgId,
-                      packageId: pkgId,
-                      name: pkgObj.name || pkgObj.packageName || pkgName,
-                      price: pkgObj.price || srv.totalPrice || item.amount,
-                      quantity: srv.quantity || 1,
-                      category: catSlug,
-                      duration: pkgObj.duration || 60,
-                      review: mappedPkgRev
+                  const pkgObj = (srv.package as any) || {};
+                  const pkgId = pkgObj._id || pkgObj.id || (srv as any).packageId || `pkg-${idx}`;
+                  const pkgRev = pkgObj.review || (srv as any).review;
+                  let mappedPkgRev: CartItem["review"] = undefined;
+                  if (pkgRev && typeof pkgRev === "object" && (pkgRev._id || pkgRev.id || pkgRev.rating)) {
+                    mappedPkgRev = {
+                      reviewId: pkgRev._id || pkgRev.id,
+                      rating: Number(pkgRev.rating) || 5,
+                      comment: pkgRev.review || pkgRev.comment || "",
+                      dateCreated: pkgRev.createdAt ? new Date(pkgRev.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Just now"
                     };
-                  })
+                  }
+
+                  return {
+                    id: pkgId,
+                    packageId: pkgId,
+                    name: pkgObj.name || pkgObj.packageName || pkgName,
+                    price: pkgObj.price || srv.totalPrice || item.amount,
+                    quantity: srv.quantity || 1,
+                    category: catSlug,
+                    duration: pkgObj.duration || 60,
+                    review: mappedPkgRev
+                  };
+                })
                 : [
-                    {
-                      id: (item as any)?.packageId || (item as any)?.package?._id || (item as any)?.package?.id || item.bookingId,
-                      packageId: (item as any)?.packageId || (item as any)?.package?._id || (item as any)?.package?.id || item.bookingId,
-                      name: pkgName,
-                      price: item.amount,
-                      quantity: 1,
-                      category: catSlug,
-                      duration: 60,
-                      review: undefined
-                    }
-                  ];
+                  {
+                    id: (item as any)?.packageId || (item as any)?.package?._id || (item as any)?.package?.id || item.bookingId,
+                    packageId: (item as any)?.packageId || (item as any)?.package?._id || (item as any)?.package?.id || item.bookingId,
+                    name: pkgName,
+                    price: item.amount,
+                    quantity: 1,
+                    category: catSlug,
+                    duration: 60,
+                    review: undefined
+                  }
+                ];
 
               let formattedDate = item.bookingDate;
               if (item.bookingDate) {
@@ -1157,7 +1157,7 @@ export const useStore = create<AppState>()(
                   if (!isNaN(d.getTime())) {
                     formattedDate = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
                   }
-                } catch (e) {}
+                } catch (e) { }
               }
               if (!formattedDate) {
                 formattedDate = new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -1478,7 +1478,7 @@ export const useStore = create<AppState>()(
         set((state) => {
           const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const userMsg: ChatMessage = { id: Math.random().toString(), sender, text, timestamp: now };
-          
+
           let updatedMessages = [...state.chatMessages, userMsg];
 
           // Trigger simulated reply if user sent the message
