@@ -700,9 +700,38 @@ function BookingContent() {
                       {/* BOOKED PACKAGES LIST */}
                       <div className="space-y-3">
                         {cart.length === 0 ? (
-                          <div className="py-12 text-center flex flex-col items-center justify-center text-slate-400 space-y-3 bg-slate-50 dark:bg-slate-950/20 rounded-[24px]">
-                            <ShoppingBag className="w-12 h-12 text-slate-300 dark:text-slate-800" />
-                            <p className="text-xs font-bold uppercase tracking-wider">Your selection is empty</p>
+                          <div className="py-12 sm:py-16 px-6 text-center flex flex-col items-center justify-center space-y-4 bg-slate-50/70 dark:bg-slate-950/30 rounded-3xl border border-slate-100 dark:border-slate-800/80">
+                            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-accent-lux/10 dark:bg-accent-lux/15 flex items-center justify-center text-accent-lux shadow-xs">
+                              <ShoppingBag className="w-8 h-8 sm:w-10 sm:h-10 text-accent-lux stroke-[1.75]" />
+                            </div>
+                            <div className="space-y-1.5 max-w-sm mx-auto">
+                              <h3 className="text-base sm:text-lg font-black text-foreground tracking-tight">
+                                No services selected
+                              </h3>
+                              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+                                You&apos;ve removed all services from your selection. Add a service to continue booking.
+                              </p>
+                            </div>
+                            <div className="pt-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (typeof window !== "undefined") {
+                                    const isHome = window.location.pathname === "/";
+                                    const categoriesEl = document.getElementById("categories");
+                                    if (isHome && categoriesEl) {
+                                      categoriesEl.scrollIntoView({ behavior: "smooth" });
+                                      window.history.replaceState(null, "", "/#categories");
+                                      return;
+                                    }
+                                  }
+                                  router.push("/#categories");
+                                }}
+                                className="inline-flex items-center justify-center px-6 py-3 rounded-full bg-accent-lux hover:bg-accent-lux/95 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-accent-lux/25 transition-all cursor-pointer"
+                              >
+                                + Add Services
+                              </button>
+                            </div>
                           </div>
                         ) : (
                           cart.map((item) => {
@@ -1186,9 +1215,23 @@ function BookingContent() {
                                   setShowAddAddress(true);
                                 }
                               }}
-                              className="px-4 py-2 bg-[#782860]/10 text-[#782860] dark:bg-[#782860]/20 dark:text-purple-300 hover:bg-[#782860] hover:text-white font-extrabold text-xs rounded-2xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-sm"
+                              className={`px-4 py-2 font-extrabold text-xs rounded-2xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-sm ${
+                                showAddAddress
+                                  ? "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+                                  : "bg-[#782860]/10 text-[#782860] dark:bg-[#782860]/20 dark:text-purple-300 hover:bg-[#782860] hover:text-white"
+                              }`}
                             >
-                              <Plus className="w-4 h-4" /> {showAddAddress ? "Cancel" : "Add Address"}
+                              {showAddAddress ? (
+                                <>
+                                  <X className="w-4 h-4" />
+                                  <span>Cancel</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="w-4 h-4" />
+                                  <span>Add Address</span>
+                                </>
+                              )}
                             </button>
                           </div>
 
@@ -1467,7 +1510,12 @@ function BookingContent() {
 
                       <button
                         onClick={handleNextStep}
-                        className="px-6 py-3 rounded-full bg-accent-lux hover:bg-accent-lux/95 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-md transition-transform duration-300 hover:scale-103 active:scale-97"
+                        disabled={step === 0 && cart.length === 0}
+                        className={`px-6 py-3 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-md transition-transform duration-300 ${
+                          step === 0 && cart.length === 0
+                            ? "bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none"
+                            : "bg-accent-lux hover:bg-accent-lux/95 text-white cursor-pointer hover:scale-103 active:scale-97"
+                        }`}
                       >
                         {step === 3 ? "Authorize & Book" : "Continue"} <ChevronRight className="w-4 h-4" />
                       </button>

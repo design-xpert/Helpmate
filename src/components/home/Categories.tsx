@@ -84,6 +84,24 @@ export default function Categories() {
     loadCategories();
   }, []);
 
+  // Smooth scroll directly to categories when hash is #categories
+  useEffect(() => {
+    const checkHashAndScroll = () => {
+      if (typeof window !== "undefined" && window.location.hash === "#categories") {
+        const el = document.getElementById("categories");
+        if (el) {
+          setTimeout(() => {
+            el.scrollIntoView({ behavior: "smooth" });
+          }, 80);
+        }
+      }
+    };
+
+    checkHashAndScroll();
+    window.addEventListener("hashchange", checkHashAndScroll);
+    return () => window.removeEventListener("hashchange", checkHashAndScroll);
+  }, [isLoadingCategories]);
+
   const containerVariants: Variants = {
     hidden: { opacity: 0 },
     show: {

@@ -96,14 +96,23 @@ function ProfilePageContent() {
   } = useStore();
 
 
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
-    if (token) {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (!token) {
+      router.push("/login?redirect=%2Fprofile");
+    } else {
       fetchCustomerProfile();
       fetchAddresses();
       fetchBookmarks();
       fetchBookings();
     }
-  }, [token, fetchCustomerProfile, fetchAddresses, fetchBookmarks, fetchBookings]);
+  }, [mounted, token, router, fetchCustomerProfile, fetchAddresses, fetchBookmarks, fetchBookings]);
 
   const [activeTab, setActiveTab] = useState(
     searchParams.get("tab") === "saved" ? "bookmarks" : (searchParams.get("tab") || "dashboard")

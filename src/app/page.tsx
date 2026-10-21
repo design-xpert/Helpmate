@@ -16,12 +16,27 @@ import Footer from "@/components/common/Footer";
 import ServiceAreas from "@/components/home/ServiceAreas";
 import CtaBanner from "@/components/home/CtaBanner";
 import MembershipBanner from "@/components/membership/MembershipBanner";
+import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/store/useStore";
 
 export default function Home() {
   const router = useRouter();
   const { addToCart, cart } = useStore();
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash === "#categories") {
+      const scrollCategories = () => {
+        const el = document.getElementById("categories");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth" });
+        }
+      };
+      scrollCategories();
+      const timer = setTimeout(scrollCategories, 150);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   const handleBookFromCalculator = (data: {
     id: string;

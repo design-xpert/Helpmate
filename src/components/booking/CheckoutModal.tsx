@@ -674,56 +674,93 @@ export default function CheckoutModal({
 
               {/* BOOKED PACKAGES LIST */}
               <div className="space-y-3">
-                {cart.map((item) => {
-                  const addonTotal = (item.selectedAddons || []).reduce(
-                    (sum, a) => sum + (a.totalPrice || ((a.price || 0) * (a.quantity || 1))),
-                    0
-                  );
-                  const itemBasePrice = item.price * item.quantity;
-                  const itemTotal = itemBasePrice + addonTotal;
-                  const rawPkgId = item.packageId || item.itemId || item.id;
-                  const hexMatch = String(rawPkgId).match(/[0-9a-fA-F]{24}/);
-                  const cleanPkgId = hexMatch ? hexMatch[0] : rawPkgId;
-                  const itemImg = item.imageUrl || item.image || packageImageMap[item.id] || (item.itemId && packageImageMap[item.itemId]) || (cleanPkgId && packageImageMap[cleanPkgId]) || packageImageMap[item.name];
+                {cart.length === 0 ? (
+                  <div className="py-12 sm:py-14 px-6 text-center flex flex-col items-center justify-center space-y-4 bg-slate-50/70 dark:bg-slate-900/40 rounded-3xl border border-slate-100 dark:border-slate-800/80">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-accent-lux/10 dark:bg-accent-lux/15 flex items-center justify-center text-accent-lux shadow-xs">
+                      <ShoppingBag className="w-8 h-8 sm:w-10 sm:h-10 text-accent-lux stroke-[1.75]" />
+                    </div>
+                    <div className="space-y-1.5 max-w-sm mx-auto">
+                      <h3 className="text-base sm:text-lg font-black text-foreground tracking-tight">
+                        No services selected
+                      </h3>
+                      <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+                        You&apos;ve removed all services from your selection. Add a service to continue booking.
+                      </p>
+                    </div>
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          if (typeof window !== "undefined") {
+                            const isHome = window.location.pathname === "/";
+                            const categoriesEl = document.getElementById("categories");
+                            if (isHome && categoriesEl) {
+                              categoriesEl.scrollIntoView({ behavior: "smooth" });
+                              window.history.replaceState(null, "", "/#categories");
+                              return;
+                            }
+                          }
+                          router.push("/#categories");
+                        }}
+                        className="inline-flex items-center justify-center px-6 py-3 rounded-full bg-accent-lux hover:bg-accent-lux/95 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-accent-lux/25 transition-all cursor-pointer"
+                      >
+                        + Add Services
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  cart.map((item) => {
+                    const addonTotal = (item.selectedAddons || []).reduce(
+                      (sum, a) => sum + (a.totalPrice || ((a.price || 0) * (a.quantity || 1))),
+                      0
+                    );
+                    const itemBasePrice = item.price * item.quantity;
+                    const itemTotal = itemBasePrice + addonTotal;
+                    const rawPkgId = item.packageId || item.itemId || item.id;
+                    const hexMatch = String(rawPkgId).match(/[0-9a-fA-F]{24}/);
+                    const cleanPkgId = hexMatch ? hexMatch[0] : rawPkgId;
+                    const itemImg = item.imageUrl || item.image || packageImageMap[item.id] || (item.itemId && packageImageMap[item.itemId]) || (cleanPkgId && packageImageMap[cleanPkgId]) || packageImageMap[item.name];
 
-                  return (
-                    <div
-                      key={item.id}
-                      className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2"
-                    >
-                      <div className="flex justify-between items-center gap-3">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <CartPackageImage
-                            src={itemImg}
-                            name={item.name}
-                            category={item.category}
-                            pkgId={cleanPkgId}
-                            className="w-12 h-12 rounded-xl"
-                          />
-                          <div className="min-w-0 flex-1 text-left">
-                            <span className="text-xs font-bold text-foreground block truncate">{item.name}</span>
-                            <p className="text-[10px] text-slate-400 mt-0.5 capitalize">{item.category} • {formatDuration(item.duration)} • Qty: {item.quantity}</p>
+                    return (
+                      <div
+                        key={item.id}
+                        className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2"
+                      >
+                        <div className="flex justify-between items-center gap-3">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <CartPackageImage
+                              src={itemImg}
+                              name={item.name}
+                              category={item.category}
+                              pkgId={cleanPkgId}
+                              className="w-12 h-12 rounded-xl"
+                            />
+                            <div className="min-w-0 flex-1 text-left">
+                              <span className="text-xs font-bold text-foreground block truncate">{item.name}</span>
+                              <p className="text-[10px] text-slate-400 mt-0.5 capitalize">{item.category} • {formatDuration(item.duration)} • Qty: {item.quantity}</p>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <div className="text-right">
-                            <span className="text-xs font-extrabold text-foreground font-sans block">₹{itemBasePrice}</span>
-                            {addonTotal > 0 && (
-                              <span className="text-[9px] font-semibold text-accent-lux font-sans block">+₹{addonTotal} addons</span>
-                            )}
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="text-right">
+                              <span className="text-xs font-extrabold text-foreground font-sans block">₹{itemBasePrice}</span>
+                              {addonTotal > 0 && (
+                                <span className="text-[9px] font-semibold text-accent-lux font-sans block">+₹{addonTotal} addons</span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => removeFromCart(item.id)}
+                              className="text-slate-400 hover:text-red-500 cursor-pointer p-1 rounded-lg"
+                              title="Remove service"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
-                          <button
-                            onClick={() => removeFromCart(item.id)}
-                            className="text-slate-400 hover:text-red-500 cursor-pointer p-1 rounded-lg"
-                            title="Remove service"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
 
               {/* ADDED ADD-ONS SECTION - Shown Below Packages */}
@@ -1146,9 +1183,23 @@ export default function CheckoutModal({
                           setShowAddAddress(true);
                         }
                       }}
-                      className="px-3.5 py-1.5 bg-[#782860]/10 text-[#782860] dark:bg-[#782860]/20 dark:text-purple-300 hover:bg-[#782860] hover:text-white font-extrabold text-xs rounded-2xl transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                      className={`px-3.5 py-1.5 font-extrabold text-xs rounded-2xl transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                        showAddAddress
+                          ? "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+                          : "bg-[#782860]/10 text-[#782860] dark:bg-[#782860]/20 dark:text-purple-300 hover:bg-[#782860] hover:text-white"
+                      }`}
                     >
-                      <Plus className="w-3.5 h-3.5" /> {showAddAddress ? "Cancel" : "Add Address"}
+                      {showAddAddress ? (
+                        <>
+                          <X className="w-3.5 h-3.5" />
+                          <span>Cancel</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Address</span>
+                        </>
+                      )}
                     </button>
                   </div>
 
@@ -1458,7 +1509,12 @@ export default function CheckoutModal({
               )}
               <button
                 onClick={handleNextStep}
-                className="px-6 py-3 rounded-full bg-primary-lux hover:bg-slate-800 dark:bg-accent-lux dark:hover:bg-accent-lux/95 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-md"
+                disabled={step === 0 && cart.length === 0}
+                className={`px-6 py-3 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-md ${
+                  step === 0 && cart.length === 0
+                    ? "bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none"
+                    : "bg-primary-lux hover:bg-slate-800 dark:bg-accent-lux dark:hover:bg-accent-lux/95 text-white cursor-pointer"
+                }`}
               >
                 {step === 3 ? "Authorize & Book" : "Continue"} <ChevronRight className="w-4 h-4" />
               </button>

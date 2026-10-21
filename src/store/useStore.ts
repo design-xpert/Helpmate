@@ -39,6 +39,7 @@ import {
 } from "@/services/reviewApi";
 import { fetchCustomerPackagesApi } from "@/services/packageApi";
 import { formatImageUrl } from "@/utils/image";
+import { isTokenExpired, isAuthError, handleTokenExpiration } from "@/utils/token";
 export interface CartItem {
   id: string;
   itemId?: string;
@@ -289,6 +290,10 @@ export const useStore = create<AppState>()(
       fetchAddresses: async () => {
         const token = get().token;
         if (!token) return;
+        if (isTokenExpired(token)) {
+          handleTokenExpiration("Your session has expired. Please sign in again.");
+          return;
+        }
         set({ isLoadingAddresses: true });
         try {
           const res = await getCustomerAddressesApi(token);
@@ -303,10 +308,16 @@ export const useStore = create<AppState>()(
             });
           } else {
             set({ isLoadingAddresses: false });
+            if (res && isAuthError(0, res.message)) {
+              handleTokenExpiration(res.message);
+            }
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("Error fetching customer addresses:", err);
           set({ isLoadingAddresses: false });
+          if (err && isAuthError(0, err?.message)) {
+            handleTokenExpiration(err.message);
+          }
         }
       },
       addAddress: (address) => {
@@ -469,6 +480,10 @@ export const useStore = create<AppState>()(
       fetchBookmarks: async () => {
         const token = get().token;
         if (!token) return;
+        if (isTokenExpired(token)) {
+          handleTokenExpiration("Your session has expired. Please sign in again.");
+          return;
+        }
         set({ isLoadingBookmarks: true });
         try {
           const res = await getBookmarksApi(token);
@@ -481,10 +496,16 @@ export const useStore = create<AppState>()(
             });
           } else {
             set({ isLoadingBookmarks: false });
+            if (res && isAuthError(0, res.message)) {
+              handleTokenExpiration(res.message);
+            }
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("Error fetching bookmarks:", err);
           set({ isLoadingBookmarks: false });
+          if (err && isAuthError(0, err?.message)) {
+            handleTokenExpiration(err.message);
+          }
         }
       },
 
@@ -522,6 +543,10 @@ export const useStore = create<AppState>()(
       },
 
       login: async (phone, token, customer) => {
+        if (token && isTokenExpired(token)) {
+          handleTokenExpiration("Your login session has expired. Please sign in again.");
+          return;
+        }
         const existingGuestCart = [...get().cart];
         set({
           isLoggedIn: true,
@@ -552,6 +577,10 @@ export const useStore = create<AppState>()(
         }
       },
       setAuth: async ({ token, customer }) => {
+        if (token && isTokenExpired(token)) {
+          handleTokenExpiration("Your login session has expired. Please sign in again.");
+          return;
+        }
         const existingGuestCart = [...get().cart];
         set({
           isLoggedIn: true,
@@ -582,6 +611,10 @@ export const useStore = create<AppState>()(
       fetchCustomerProfile: async () => {
         const token = get().token;
         if (!token) return;
+        if (isTokenExpired(token)) {
+          handleTokenExpiration("Your session has expired. Please sign in again.");
+          return;
+        }
         try {
           const res = await getCurrentCustomerApi(token);
           if (res.success && res.data) {
@@ -593,9 +626,14 @@ export const useStore = create<AppState>()(
               userName: res.data.fullName || get().userName,
               userPhone: res.data.mobile || get().userPhone,
             });
+          } else if (res && isAuthError(0, res.message)) {
+            handleTokenExpiration(res.message);
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("Error fetching customer profile:", err);
+          if (err && isAuthError(0, err?.message)) {
+            handleTokenExpiration(err.message);
+          }
         }
       },
       logout: () => set({ isLoggedIn: false, guestMode: true, token: null, customerId: null, customerCode: null, userPhone: "", userName: "", bookings: [], cart: [], cartId: null, cartPricing: null, bookmarkedPackageIds: [], bookmarkedPackages: [] }),
@@ -636,6 +674,10 @@ export const useStore = create<AppState>()(
       fetchServerCart: async () => {
         const token = get().token;
         if (!token) return;
+        if (isTokenExpired(token)) {
+          handleTokenExpiration("Your session has expired. Please sign in again.");
+          return;
+        }
         try {
           const res = await getCartApi(token);
           if (res.success && res.data) {
@@ -759,9 +801,14 @@ export const useStore = create<AppState>()(
               cartId: res.data.cartId || res.data.cart?._id || null,
               cartPricing: res.data.pricing || null,
             });
+          } else if (res && !res.success && isAuthError(0, res.message)) {
+            handleTokenExpiration(res.message);
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("Error fetching cart from server:", err);
+          if (err && isAuthError(0, err?.message)) {
+            handleTokenExpiration(err.message);
+          }
         }
       },
 
@@ -1139,6 +1186,10 @@ export const useStore = create<AppState>()(
       fetchBookings: async () => {
         const state = get();
         if (!state.token) return;
+        if (isTokenExpired(state.token)) {
+          handleTokenExpiration("Your session has expired. Please sign in again.");
+          return;
+        }
         set({ isLoadingBookings: true });
 
         try {
@@ -1286,10 +1337,16 @@ export const useStore = create<AppState>()(
             set({ bookings: mappedBookings, isLoadingBookings: false });
           } else {
             set({ isLoadingBookings: false });
+            if (res && isAuthError(0, res.message)) {
+              handleTokenExpiration(res.message);
+            }
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("Error in fetchBookings:", err);
           set({ isLoadingBookings: false });
+          if (err && isAuthError(0, err?.message)) {
+            handleTokenExpiration(err.message);
+          }
         }
       },
       createBookingAsync: async (paymentMethod = "pay_after_service") => {
