@@ -42,7 +42,8 @@ import {
   Film,
   UploadCloud,
   ArrowLeft,
-  FileText
+  FileText,
+  Sparkles
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/common/Header";
@@ -523,9 +524,18 @@ function ProfilePageContent() {
                       <span className="text-[9px] uppercase font-bold text-muted-lux tracking-wider">Total Bookings</span>
                       <h4 className="text-2xl font-black text-foreground mt-2">{bookings.length} Services</h4>
                     </div>
-                    <span className="text-[10px] text-muted-lux mt-4 block font-semibold">
-                      Last booked 30 mins ago
-                    </span>
+                    {bookings.length === 0 ? (
+                      <Link
+                        href="/#categories"
+                        className="text-[11px] font-bold text-accent-lux hover:underline mt-4 inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        Book Now →
+                      </Link>
+                    ) : (
+                      <span className="text-[10px] text-muted-lux mt-4 block font-semibold">
+                        Last booked recently
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -548,8 +558,19 @@ function ProfilePageContent() {
                       ))}
                     </div>
                   ) : bookings.filter((b) => b.status !== "Completed" && b.status !== "Cancelled").length === 0 ? (
-                    <div className="glass-panel p-8 text-center text-slate-400 text-xs">
-                      No active bookings in progress. Explore categories to start scheduling.
+                    <div className="glass-panel p-8 rounded-2xl text-center flex flex-col items-center justify-center space-y-3 border border-slate-200/60 dark:border-slate-800">
+                      <p className="text-xs text-slate-400">
+                        {bookings.length === 0
+                          ? "You have 0 booked services. Explore categories to start scheduling."
+                          : "No active bookings in progress. Explore categories to start scheduling."}
+                      </p>
+                      {bookings.length === 0 && (
+                        <Link
+                          href="/#categories"
+                          className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full bg-accent-lux hover:bg-accent-lux/95 text-white text-xs font-bold shadow-md shadow-accent-lux/20 hover:scale-105 active:scale-95 transition-all cursor-pointer font-sans"
+                        > Book Now
+                        </Link>
+                      )}
                     </div>
                   ) : (
                     [...bookings]
@@ -647,8 +668,23 @@ function ProfilePageContent() {
                     ))}
                   </div>
                 ) : bookings.length === 0 ? (
-                  <div className="glass-panel p-12 text-center text-slate-500 text-xs">
-                    No booking records in account. Schedule your first deep clean today.
+                  <div className="glass-panel p-10 sm:p-16 rounded-3xl text-center flex flex-col items-center justify-center space-y-4 border border-slate-200/60 dark:border-slate-800">
+                    <div className="w-16 h-16 rounded-2xl bg-purple-50 dark:bg-purple-950/60 border border-purple-100 dark:border-purple-900/40 flex items-center justify-center text-accent-lux shadow-sm">
+                      <Calendar className="w-8 h-8" />
+                    </div>
+                    <div className="space-y-1.5 max-w-md">
+                      <h4 className="text-base sm:text-lg font-black text-foreground">
+                        No Booked Services
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        You have 0 booked services in your account. Explore our verified home, repair, and lifestyle services to schedule your appointment today.
+                      </p>
+                    </div>
+                    <Link
+                      href="/#categories"
+                      className="mt-2 inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-accent-lux hover:bg-accent-lux/95 text-white text-xs font-black tracking-wide shadow-md shadow-accent-lux/20 hover:scale-105 active:scale-95 transition-all cursor-pointer font-sans"
+                    > Book Now
+                    </Link>
                   </div>
                 ) : (
                   <div className="space-y-4">

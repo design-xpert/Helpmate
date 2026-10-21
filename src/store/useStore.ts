@@ -38,6 +38,7 @@ import {
   UpdateReviewPayload,
 } from "@/services/reviewApi";
 import { fetchCustomerPackagesApi } from "@/services/packageApi";
+import { formatImageUrl } from "@/utils/image";
 export interface CartItem {
   id: string;
   itemId?: string;
@@ -47,6 +48,8 @@ export interface CartItem {
   quantity: number;
   category: string;
   duration: number; // in mins
+  image?: string;
+  imageUrl?: string;
   review?: {
     reviewId?: string;
     rating: number;
@@ -59,6 +62,8 @@ export interface CartItem {
     price: number;
     quantity: number;
     totalPrice: number;
+    image?: string;
+    imageUrl?: string;
   }>;
 }
 
@@ -195,7 +200,7 @@ interface AppState {
   removeFromCart: (id: string) => Promise<void>;
   updateCartQuantity: (id: string, quantity: number) => Promise<void>;
   clearCart: () => Promise<void>;
-  toggleAddonInCart: (itemId: string, addonId: string, action: "add" | "remove", addonDetails?: { addonName?: string; price?: number }) => Promise<void>;
+  toggleAddonInCart: (itemId: string, addonId: string, action: "add" | "remove", addonDetails?: { addonName?: string; price?: number; imageUrl?: string; image?: string }) => Promise<void>;
 
   // Location & Booking details
   selectedLocation: string;
@@ -289,11 +294,13 @@ export const useStore = create<AppState>()(
           const res = await getCustomerAddressesApi(token);
           if (res.success && res.data) {
             const mapped = res.data.map(mapBackendAddressToFrontend);
-            set({ addresses: mapped, isLoadingAddresses: false });
-            if (mapped.length > 0) {
-              const primary = mapped.find((a) => a.isDefault) || mapped[0];
-              set({ selectedAddressId: primary.id });
-            }
+            const currentSelected = get().selectedAddressId;
+            const stillValid = currentSelected ? mapped.some((a) => a.id === currentSelected) : false;
+            set({ 
+              addresses: mapped, 
+              isLoadingAddresses: false,
+              selectedAddressId: stillValid ? currentSelected : null
+            });
           } else {
             set({ isLoadingAddresses: false });
           }
@@ -644,36 +651,61 @@ export const useStore = create<AppState>()(
               const pkgName = pkgObj.packageName || pkgObj.name || pkgObj.title || item.name || null;
               const pkgPrice = typeof pkgObj.price === "number" ? pkgObj.price : (typeof item.price === "number" ? item.price : item.packageTotal || 0);
               const pkgDuration = pkgObj.duration || item.duration || 30;
+              const rawImg = pkgObj.imageUrl || pkgObj.thumbnailUrl || (pkgObj as any).image || item.imageUrl || item.image;
+              const formattedImg = rawImg ? formatImageUrl(rawImg) : (pkgId && String(pkgId).match(/[0-9a-fA-F]{24}/) ? `/api/media/package/${pkgId}/image` : undefined);
 
               return {
                 id: pkgId || item.itemId || item._id,
                 itemId: item.itemId || item._id || pkgId,
+                packageId: pkgId,
                 name: pkgName || "Service Package",
                 price: pkgPrice,
                 quantity: item.quantity || 1,
                 duration: pkgDuration,
                 category: item.category || pkgObj.category || "Service",
-                selectedAddons: item.selectedAddons || [],
+                imageUrl: formattedImg,
+                image: formattedImg,
+                selectedAddons: (item.selectedAddons || []).map((addon: any) => {
+                  const aId = String(addon.addonId?._id || addon.addonId || addon.id || "");
+                  const rawAddonImg = addon.imageUrl || addon.image || (addon.addonId && addon.addonId.imageUrl);
+                  const formattedAddonImg = rawAddonImg ? formatImageUrl(rawAddonImg) : (aId ? `/api/media/addon/${aId}/image` : undefined);
+                  return {
+                    addonId: aId,
+                    addonName: addon.addonName || (addon.addonId && addon.addonId.addonName) || "Add-on",
+                    price: typeof addon.price === "number" ? addon.price : 0,
+                    quantity: addon.quantity || 1,
+                    totalPrice: addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1)),
+                    imageUrl: formattedAddonImg,
+                    image: formattedAddonImg,
+                  };
+                }),
               };
             });
 
-            // If any mapped item is missing package name or price, fetch customer packages to enrich details
-            const needsEnrichment = mappedItems.some((m) => !m.name || m.name === "Service Package" || m.price === 0);
+            // If any mapped item is missing package name, price, or image, fetch customer packages to enrich details
+            const needsEnrichment = mappedItems.some((m) => !m.name || m.name === "Service Package" || m.price === 0 || !m.imageUrl);
             if (needsEnrichment && mappedItems.length > 0) {
               try {
-                const pkgRes = await fetchCustomerPackagesApi({ limit: 100 });
+                const pkgRes = await fetchCustomerPackagesApi({ limit: 50 });
                 if (pkgRes.success && pkgRes.data) {
                   const fetchedList = pkgRes.data;
                   mappedItems = mappedItems.map((m) => {
-                    const match = fetchedList.find((p: any) => String(p._id || p.id) === String(m.id) || String(p._id || p.id) === String(m.itemId));
+                    const match = fetchedList.find((p: any) => {
+                      const pId = String(p.package?.id || p.package?._id || p._id || p.id);
+                      return pId === String(m.id) || pId === String(m.itemId) || pId === String(m.packageId) || (p.package?.name && p.package.name === m.name);
+                    });
                     if (match) {
                       const pData = (match.package || match) as any;
+                      const rawImg = pData.imageUrl || pData.thumbnailUrl || pData.image;
+                      const matchedImg = rawImg ? formatImageUrl(rawImg) : undefined;
                       return {
                         ...m,
                         name: pData.packageName || pData.name || m.name,
                         price: pData.price || m.price,
                         duration: pData.duration || m.duration,
                         category: match.category?.name || m.category,
+                        imageUrl: m.imageUrl || matchedImg,
+                        image: m.image || matchedImg,
                       };
                     }
                     return m;
@@ -715,6 +747,8 @@ export const useStore = create<AppState>()(
                   price: m.price > 0 ? m.price : localMatch.price,
                   duration: m.duration || localMatch.duration,
                   category: localMatch.category || m.category,
+                  imageUrl: m.imageUrl || localMatch.imageUrl || localMatch.image,
+                  image: m.image || localMatch.image || localMatch.imageUrl,
                 };
               }
               return m;
@@ -734,6 +768,8 @@ export const useStore = create<AppState>()(
       addToCart: async (item: Omit<CartItem, "quantity"> | CartItem, quantityOverride?: number) => {
         const targetId = item.id || item.itemId || `pkg-${Date.now()}`;
         const itemQuantity = quantityOverride || (item as any).quantity || 1;
+        const rawItemImg = (item as any).imageUrl || (item as any).image;
+        const cleanItemImg = rawItemImg ? formatImageUrl(rawItemImg) : undefined;
 
         set((state) => {
           const existingIndex = state.cart.findIndex((i) =>
@@ -745,17 +781,22 @@ export const useStore = create<AppState>()(
             updated[existingIndex] = {
               ...updated[existingIndex],
               quantity: (updated[existingIndex].quantity || 1) + itemQuantity,
+              image: updated[existingIndex].image || cleanItemImg,
+              imageUrl: updated[existingIndex].imageUrl || cleanItemImg,
             };
             return { cart: updated };
           }
           const newItem: CartItem = {
             id: targetId,
             itemId: item.itemId || targetId,
+            packageId: (item as any).packageId || (typeof targetId === "string" && targetId.match(/[0-9a-fA-F]{24}/) ? targetId : undefined),
             name: item.name || "Service Package",
             price: item.price || 0,
             category: item.category || "Service",
             duration: item.duration || 30,
             quantity: itemQuantity,
+            image: cleanItemImg,
+            imageUrl: cleanItemImg,
             selectedAddons: item.selectedAddons || [],
           };
           return {
@@ -846,8 +887,10 @@ export const useStore = create<AppState>()(
 
       toggleAddonInCart: async (itemId, addonId, action, addonDetails) => {
         const token = get().token;
-        const targetItem = get().cart.find((i) => i.id === itemId || i.itemId === itemId);
-        const serverItemId = targetItem?.itemId || itemId;
+        const targetItem = get().cart.find(
+          (i) => i.id === itemId || i.itemId === itemId || i.packageId === itemId || (itemId && String(i.id).includes(String(itemId)))
+        );
+        const serverItemId = targetItem?.itemId || targetItem?.id || itemId;
 
         if (token && serverItemId) {
           try {
@@ -861,13 +904,21 @@ export const useStore = create<AppState>()(
 
         set((state) => ({
           cart: state.cart.map((item) => {
-            if (item.id === itemId || item.itemId === itemId) {
+            const isTarget =
+              item.id === itemId ||
+              item.itemId === itemId ||
+              item.packageId === itemId ||
+              (itemId && String(item.id).includes(String(itemId))) ||
+              (targetItem && (item.id === targetItem.id || item.itemId === targetItem.itemId));
+            if (isTarget) {
               const currentAddons = item.selectedAddons || [];
               let newAddons = [...currentAddons];
               if (action === "add") {
                 const existingIdx = newAddons.findIndex((a) => a.addonId === addonId);
                 const name = addonDetails?.addonName || "Addon";
                 const priceVal = typeof addonDetails?.price === "number" ? addonDetails.price : 0;
+                const rawAddonImg = addonDetails?.imageUrl || (addonDetails as any)?.image;
+                const formattedAddonImg = rawAddonImg ? formatImageUrl(rawAddonImg) : (addonId ? `/api/media/addon/${addonId}/image` : undefined);
                 if (existingIdx >= 0) {
                   const existing = newAddons[existingIdx];
                   newAddons[existingIdx] = {
@@ -875,6 +926,8 @@ export const useStore = create<AppState>()(
                     addonName: (name && name !== "Addon") ? name : existing.addonName,
                     price: priceVal > 0 ? priceVal : existing.price,
                     totalPrice: (priceVal > 0 ? priceVal : existing.price) * (existing.quantity || 1),
+                    imageUrl: existing.imageUrl || formattedAddonImg,
+                    image: existing.image || formattedAddonImg,
                   };
                 } else {
                   newAddons.push({
@@ -883,6 +936,8 @@ export const useStore = create<AppState>()(
                     price: priceVal,
                     quantity: 1,
                     totalPrice: priceVal,
+                    imageUrl: formattedAddonImg,
+                    image: formattedAddonImg,
                   });
                 }
               } else {
@@ -904,7 +959,7 @@ export const useStore = create<AppState>()(
       setHasPromptedLocation: (prompted) => set({ hasPromptedLocation: prompted }),
       isLocationSet: false,
       setIsLocationSet: (val) => set({ isLocationSet: val }),
-      selectedAddressId: "1",
+      selectedAddressId: null,
       setSelectedAddressId: (id) => set({ selectedAddressId: id }),
       selectedDate: null,
       setSelectedDate: (date) => set({ selectedDate: date }),

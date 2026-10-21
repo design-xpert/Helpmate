@@ -37,11 +37,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useStore, Address, CartItem, getItemAddonTotal } from "@/store/useStore";
 import confetti from "canvas-confetti";
 import { InlineCustomDatePicker, InlineCustomTimePicker } from "@/components/booking/CustomDateTimePickerModal";
-import { isPastDate, isPastTime, formatDuration } from "@/utils/dateTime";
+import { isPastDate, isPastTime, formatDuration, formatDDMMYYYY, formatScheduleDateTime } from "@/utils/dateTime";
 import { AvailableCouponsSlider } from "@/components/booking/AvailableCouponsSlider";
 import { AddAddressForm } from "@/components/booking/AddAddressForm";
 import MembershipBanner from "@/components/membership/MembershipBanner";
 import { fetchScheduleAvailabilityApi } from "@/services/scheduleApi";
+import { fetchCustomerPackagesApi, fetchCustomerPackageDetailsApi } from "@/services/packageApi";
+import { formatImageUrl } from "@/utils/image";
+import { CartPackageImage } from "@/components/booking/CartPackageImage";
+import { CartAddonImage } from "@/components/booking/CartAddonImage";
 import { toast } from "@/components/common/Toast";
 
 interface Props {
@@ -52,6 +56,7 @@ interface Props {
   servicePrice: number;
   serviceCategory: string;
   serviceDuration: number;
+  serviceImage?: string;
 }
 
 export default function CheckoutModal({
@@ -61,7 +66,8 @@ export default function CheckoutModal({
   serviceName,
   servicePrice,
   serviceCategory,
-  serviceDuration
+  serviceDuration,
+  serviceImage
 }: Props) {
   const router = useRouter();
   const {
@@ -211,6 +217,143 @@ export default function CheckoutModal({
     return `${hour < 10 ? '0' : ''}${hour}:${mStr}`;
   };
 
+  const [packageImageMap, setPackageImageMap] = useState<Record<string, string>>({});
+  const [cartPackageAddons, setCartPackageAddons] = useState<any[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadPackageImages() {
+      if (!isOpen || !cart || cart.length === 0) return;
+      try {
+        const res = await fetchCustomerPackagesApi({ limit: 50 });
+        if (!isMounted) return;
+
+        const imgMap: Record<string, string> = {};
+        const cartItemIds = new Set<string>();
+        const cartNames = new Set<string>();
+        cart.forEach((c) => {
+          if (c.id) cartItemIds.add(String(c.id));
+          if (c.itemId) cartItemIds.add(String(c.itemId));
+          if (c.packageId) cartItemIds.add(String(c.packageId));
+          const hexes = String(c.id || "").match(/[0-9a-fA-F]{24}/g);
+          if (hexes) hexes.forEach((h) => cartItemIds.add(h));
+          const itemHexes = String(c.itemId || "").match(/[0-9a-fA-F]{24}/g);
+          if (itemHexes) itemHexes.forEach((h) => cartItemIds.add(h));
+          const pkgHexes = String(c.packageId || "").match(/[0-9a-fA-F]{24}/g);
+          if (pkgHexes) pkgHexes.forEach((h) => cartItemIds.add(h));
+          if (c.name) cartNames.add(c.name.trim().toLowerCase());
+        });
+
+        const matchedAddons: any[] = [];
+        const seenAddonKeys = new Set<string>();
+        const matchedPkgHexes = new Set<string>();
+
+        if (res.success && res.data) {
+          res.data.forEach((pkgItem: any) => {
+            const pkg = pkgItem.package || pkgItem;
+            const pkgId = String(pkg.id || pkg._id || pkgItem.id || pkgItem._id || "");
+            const pkgHex = (String(pkgId).match(/[0-9a-fA-F]{24}/) || [])[0] || "";
+            const pkgName = String(pkg.name || pkg.packageName || pkgItem.name || "").trim();
+            const pkgNameLower = pkgName.toLowerCase();
+
+            const rawImg = pkg.imageUrl || pkg.thumbnailUrl || (pkg as any).image;
+            const formatted = rawImg ? formatImageUrl(rawImg) : (pkgHex ? `/api/media/package/${pkgHex}/image` : "");
+            if (formatted) {
+              if (pkgId) imgMap[pkgId] = formatted;
+              if (pkgHex) imgMap[pkgHex] = formatted;
+              if (pkgName) imgMap[pkgName] = formatted;
+            }
+
+            const isCartMatch =
+              (pkgId && cartItemIds.has(pkgId)) ||
+              (pkgHex && cartItemIds.has(pkgHex)) ||
+              (pkgNameLower && cartNames.has(pkgNameLower)) ||
+              cart.some((c) => {
+                const cLower = (c.name || "").trim().toLowerCase();
+                return cLower && (cLower === pkgNameLower || cLower.includes(pkgNameLower) || pkgNameLower.includes(cLower));
+              });
+
+            if (isCartMatch) {
+              if (pkgHex) matchedPkgHexes.add(pkgHex);
+              if (pkgId) matchedPkgHexes.add(pkgId);
+
+              const rawAddons = pkgItem.addons || pkg.addons || (pkgItem.package && pkgItem.package.addons) || [];
+              if (Array.isArray(rawAddons)) {
+                rawAddons.forEach((addon: any) => {
+                  const aId = String(addon._id || addon.id || "");
+                  const aKey = `${pkgHex || pkgId}-${aId}`;
+                  if (aId && !seenAddonKeys.has(aKey)) {
+                    seenAddonKeys.add(aKey);
+                    matchedAddons.push({
+                      id: aId,
+                      packageId: pkgHex || pkgId,
+                      packageName: pkgName,
+                      name: addon.addonName || addon.title || addon.name || "Service Add-on",
+                      price: typeof addon.price === "number" ? addon.price : 0,
+                      description: addon.description || "",
+                      imageUrl: addon.imageUrl ? formatImageUrl(addon.imageUrl) : `/api/media/addon/${aId}/image`,
+                    });
+                  }
+                });
+              }
+            }
+          });
+        }
+
+        // Direct fallback: Fetch details by package ID if not matched in general list
+        for (const c of cart) {
+          const rawId = c.packageId || c.itemId || c.id;
+          const hex = (String(rawId).match(/[0-9a-fA-F]{24}/) || [])[0];
+          if (hex && !matchedPkgHexes.has(hex)) {
+            try {
+              const detailsRes = await fetchCustomerPackageDetailsApi(hex);
+              if (detailsRes.success && detailsRes.data) {
+                const p = detailsRes.data.package;
+                const pName = p?.name || c.name;
+                const pImg = p?.imageUrl ? formatImageUrl(p.imageUrl) : `/api/media/package/${hex}/image`;
+                imgMap[hex] = pImg;
+                if (pName) imgMap[pName] = pImg;
+
+                const addons = detailsRes.data.addons || [];
+                if (Array.isArray(addons)) {
+                  addons.forEach((addon: any) => {
+                    const aId = String(addon._id || addon.id || "");
+                    const aKey = `${hex}-${aId}`;
+                    if (aId && !seenAddonKeys.has(aKey)) {
+                      seenAddonKeys.add(aKey);
+                      matchedAddons.push({
+                        id: aId,
+                        packageId: hex,
+                        packageName: pName,
+                        name: addon.addonName || addon.title || addon.name || "Service Add-on",
+                        price: typeof addon.price === "number" ? addon.price : 0,
+                        description: addon.description || "",
+                        imageUrl: addon.imageUrl ? formatImageUrl(addon.imageUrl) : `/api/media/addon/${aId}/image`,
+                      });
+                    }
+                  });
+                }
+              }
+            } catch (err) {
+              console.error("Error fetching direct package details in CheckoutModal:", err);
+            }
+          }
+        }
+
+        if (isMounted) {
+          setPackageImageMap(imgMap);
+          setCartPackageAddons(matchedAddons);
+        }
+      } catch (err) {
+        console.error("Error loading package images in CheckoutModal:", err);
+      }
+    }
+    loadPackageImages();
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, cart]);
+
   // Initialize cart with current service if empty
   useEffect(() => {
     if (isOpen && cart.length === 0) {
@@ -219,10 +362,11 @@ export default function CheckoutModal({
         name: serviceName,
         price: servicePrice,
         category: serviceCategory,
-        duration: serviceDuration
+        duration: serviceDuration,
+        image: serviceImage || (serviceId ? `/api/media/package/${serviceId}/image` : undefined)
       });
     }
-  }, [isOpen, serviceId, serviceName, servicePrice, serviceCategory, serviceDuration, cart, addToCart]);
+  }, [isOpen, serviceId, serviceName, servicePrice, serviceCategory, serviceDuration, serviceImage, cart, addToCart]);
 
   if (!isOpen) return null;
 
@@ -282,10 +426,10 @@ export default function CheckoutModal({
     }
   };
 
-  const isStepCompleted = (idx: number) => {
+  const isStepCompleted = (idx: number): boolean => {
     if (idx === 0) return cart.length > 0;
-    if (idx === 1) return Boolean(selectedDate && selectedTimeSlot);
-    if (idx === 2) return Boolean((token || isLoggedIn) && selectedAddressId);
+    if (idx === 1) return isStepCompleted(0) && Boolean(selectedDate && selectedTimeSlot);
+    if (idx === 2) return isStepCompleted(1) && Boolean((token || isLoggedIn) && selectedAddressId && addresses.some((a) => a.id === selectedAddressId));
     if (idx === 3) return step === 4;
     return false;
   };
@@ -522,73 +666,218 @@ export default function CheckoutModal({
           {/* STEP 0: Cart Review */}
           {step === 0 && (
             <div className="space-y-6">
-              <div>
-                <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
-                  <ShoppingBag className="w-4 h-4 text-accent-lux" /> Review Cart Items
+              <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
+                <h4 className="font-extrabold text-sm text-foreground flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4 text-accent-lux" /> Review Service Selections
                 </h4>
-                <p className="text-xs text-slate-400 mt-1">Confirm details of your selected services</p>
               </div>
 
+              {/* BOOKED PACKAGES LIST */}
               <div className="space-y-3">
                 {cart.map((item) => {
                   const addonTotal = (item.selectedAddons || []).reduce(
                     (sum, a) => sum + (a.totalPrice || ((a.price || 0) * (a.quantity || 1))),
                     0
                   );
-                  const itemTotal = (item.price * item.quantity) + addonTotal;
+                  const itemBasePrice = item.price * item.quantity;
+                  const itemTotal = itemBasePrice + addonTotal;
+                  const rawPkgId = item.packageId || item.itemId || item.id;
+                  const hexMatch = String(rawPkgId).match(/[0-9a-fA-F]{24}/);
+                  const cleanPkgId = hexMatch ? hexMatch[0] : rawPkgId;
+                  const itemImg = item.imageUrl || item.image || packageImageMap[item.id] || (item.itemId && packageImageMap[item.itemId]) || (cleanPkgId && packageImageMap[cleanPkgId]) || packageImageMap[item.name];
 
                   return (
                     <div
                       key={item.id}
                       className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2"
                     >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <span className="text-xs font-bold text-foreground">{item.name}</span>
-                          <p className="text-[10px] text-slate-400 mt-0.5 capitalize">{item.category} • {formatDuration(item.duration)} • Qty: {item.quantity}</p>
+                      <div className="flex justify-between items-center gap-3">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <CartPackageImage
+                            src={itemImg}
+                            name={item.name}
+                            category={item.category}
+                            pkgId={cleanPkgId}
+                            className="w-12 h-12 rounded-xl"
+                          />
+                          <div className="min-w-0 flex-1 text-left">
+                            <span className="text-xs font-bold text-foreground block truncate">{item.name}</span>
+                            <p className="text-[10px] text-slate-400 mt-0.5 capitalize">{item.category} • {formatDuration(item.duration)} • Qty: {item.quantity}</p>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-extrabold text-foreground font-sans">₹{itemTotal}</span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="text-right">
+                            <span className="text-xs font-extrabold text-foreground font-sans block">₹{itemBasePrice}</span>
+                            {addonTotal > 0 && (
+                              <span className="text-[9px] font-semibold text-accent-lux font-sans block">+₹{addonTotal} addons</span>
+                            )}
+                          </div>
                           <button
                             onClick={() => removeFromCart(item.id)}
                             className="text-slate-400 hover:text-red-500 cursor-pointer p-1 rounded-lg"
+                            title="Remove service"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
-
-                      {item.selectedAddons && item.selectedAddons.length > 0 && (
-                        <div className="pt-2 border-t border-slate-200/50 dark:border-slate-800 space-y-1">
-                          <span className="text-[9px] uppercase font-bold text-accent-lux flex items-center gap-1">
-                            <Sparkles className="w-3 h-3 animate-pulse" /> Included Add-ons ({item.selectedAddons.length})
-                          </span>
-                          <div className="space-y-1">
-                            {item.selectedAddons.map((addon) => (
-                              <div key={addon.addonId} className="flex justify-between items-center text-[11px] bg-white dark:bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                                <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-accent-lux shrink-0" />
-                                  {addon.addonName} {addon.quantity > 1 ? `(x${addon.quantity})` : ""}
-                                </span>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-bold text-foreground font-sans">+₹{addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1))}</span>
-                                  <button
-                                    onClick={() => toggleAddonInCart(item.itemId || item.id, addon.addonId, "remove")}
-                                    className="text-slate-400 hover:text-rose-500 cursor-pointer p-0.5"
-                                    title="Remove add-on"
-                                  >
-                                    <X className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
               </div>
+
+              {/* ADDED ADD-ONS SECTION - Shown Below Packages */}
+              {(() => {
+                const allAddedAddons = cart.flatMap((item) =>
+                  (item.selectedAddons || []).map((addon) => ({
+                    ...addon,
+                    parentItemId: item.itemId || item.id,
+                    parentItemName: item.name,
+                  }))
+                );
+
+                if (allAddedAddons.length === 0) return null;
+
+                const addonGrandTotal = allAddedAddons.reduce(
+                  (sum, a) => sum + (a.totalPrice || ((a.price || 0) * (a.quantity || 1))),
+                  0
+                );
+
+                return (
+                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2 text-left">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-bold text-accent-lux tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-accent-lux animate-pulse" /> Included Add-ons ({allAddedAddons.length})
+                      </span>
+                      <span className="text-xs font-bold text-slate-500 font-sans">
+                        Total: +₹{addonGrandTotal}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {allAddedAddons.map((addon) => (
+                        <div
+                          key={`${addon.parentItemId}-${addon.addonId}`}
+                          className="p-2 sm:p-2.5 bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-xl flex items-center justify-between gap-2 shadow-2xs"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <CartAddonImage
+                              src={addon.imageUrl || addon.image}
+                              name={addon.addonName}
+                              addonId={addon.addonId}
+                              className="w-9 h-9 rounded-lg"
+                            />
+                            <div className="min-w-0 flex-1 text-left">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-bold text-foreground block truncate">
+                                  {addon.addonName} {addon.quantity > 1 ? `(x${addon.quantity})` : ""}
+                                </span>
+                                <span className="text-xs font-extrabold text-accent-lux font-sans shrink-0">
+                                  +₹{addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1))}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-400 truncate">
+                                For: <span className="font-semibold text-slate-600 dark:text-slate-300">{addon.parentItemName}</span>
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => toggleAddonInCart(addon.parentItemId, addon.addonId, "remove")}
+                            className="text-slate-400 hover:text-rose-500 cursor-pointer p-1 rounded-lg hover:bg-rose-500/10 transition-colors shrink-0"
+                            title="Remove add-on"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* AVAILABLE ADD-ONS SECTION - Shown Below Everything */}
+              {cart.length > 0 && cartPackageAddons.length > 0 && (
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2 text-left">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-accent-lux animate-pulse" /> Popular Pairing Recommendations
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-400">Available Add-ons</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {cartPackageAddons.map((addon) => {
+                      const targetCartItem = cart.find(
+                        (c) => String(c.id) === String(addon.packageId) ||
+                               String(c.itemId) === String(addon.packageId) ||
+                               String(c.packageId) === String(addon.packageId) ||
+                               (addon.packageId && (String(c.id).includes(addon.packageId) || String(c.itemId).includes(addon.packageId))) ||
+                               (addon.packageName && c.name.toLowerCase() === addon.packageName.toLowerCase())
+                      ) || cart[0];
+                      const targetCartItemId = targetCartItem?.itemId || targetCartItem?.id || addon.packageId || addon.id;
+                      const isAdded = (targetCartItem?.selectedAddons || []).some((a) => a.addonId === addon.id);
+
+                      return (
+                        <div
+                          key={`${addon.packageId || 'pkg'}-${addon.id}`}
+                          className="p-2 sm:p-2.5 bg-white dark:bg-slate-950/20 border border-slate-100 dark:border-slate-800 shadow-2xs hover:shadow-xs rounded-xl text-left transition-all flex items-center justify-between gap-2 group hover:border-accent-lux/40"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <CartAddonImage
+                              src={addon.imageUrl}
+                              name={addon.name}
+                              addonId={addon.id}
+                              className="w-9 h-9 rounded-lg"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-bold text-foreground group-hover:text-accent-lux transition-colors truncate">
+                                  {addon.name}
+                                </span>
+                                <span className="text-xs font-extrabold text-accent-lux font-sans shrink-0">
+                                  +₹{addon.price}
+                                </span>
+                              </div>
+                              {addon.packageName && cart.length > 1 && (
+                                <span className="text-[10px] text-slate-400 font-medium block truncate">
+                                  For: {addon.packageName}
+                                </span>
+                              )}
+                              {addon.description && (
+                                <p className="text-[10px] text-slate-400 line-clamp-1">
+                                  {addon.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={async () => {
+                              const action = isAdded ? "remove" : "add";
+                              await toggleAddonInCart(targetCartItemId, addon.id, action, {
+                                addonName: addon.name,
+                                price: addon.price,
+                                imageUrl: addon.imageUrl,
+                              });
+                              toast.success(
+                                action === "add" ? `"${addon.name}" added.` : `"${addon.name}" removed.`
+                              );
+                            }}
+                            className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                              isAdded
+                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-450 border border-emerald-500 opacity-90"
+                                : "bg-accent-lux text-white hover:bg-accent-lux/90"
+                            }`}
+                          >
+                            {isAdded ? "Added ✓" : <>Add <Plus className="w-3 h-3" /></>}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* MEMBERSHIP PROMOTIONAL BANNER */}
               <MembershipBanner variant="compact" />
@@ -605,12 +894,13 @@ export default function CheckoutModal({
 
             return (
               <div className="space-y-6 text-left">
-                <div>
+                <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
                   <h4 className="font-extrabold text-sm text-foreground flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-[#782860]" /> Select Booking Date
+                    <Calendar className="w-4 h-4 text-[#782860]" /> Schedule Arrival Slot
                   </h4>
-                  <p className="text-xs text-slate-400 mt-1">Choose a preset day or pick any custom calendar date</p>
+                </div>
 
+                <div>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-3">
                     {dates.slice(0, 5).map((d) => {
                       const isPast = isPastDate(d.iso);
@@ -633,11 +923,6 @@ export default function CheckoutModal({
                               : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer"
                             }`}
                         >
-                          {isSelected && (
-                            <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                              <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
-                            </span>
-                          )}
                           <span className="text-[9px] font-bold uppercase tracking-wider opacity-85">{d.label}</span>
                           <span className="text-sm font-extrabold my-0.5">{d.dayNum}</span>
                         </button>
@@ -663,17 +948,12 @@ export default function CheckoutModal({
                             : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
                           }`}
                       >
-                        {(isCustomDateActive || showCustomDate) && (
-                          <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                            <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
-                          </span>
-                        )}
                         <div className="flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5 text-current" />
                           <span className="text-[9px] font-bold uppercase tracking-wider">Custom</span>
                         </div>
                         <span className="text-[10px] font-extrabold mt-1 truncate max-w-full">
-                          {isCustomDateActive && selectedDate ? selectedDate : "Calendar"}
+                          {isCustomDateActive && selectedDate ? formatDDMMYYYY(selectedDate) : "Calendar"}
                         </span>
                       </button>
 
@@ -730,11 +1010,6 @@ export default function CheckoutModal({
                               : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer"
                             }`}
                         >
-                          {isSelected && (
-                            <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                              <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
-                            </span>
-                          )}
                           {slot}
                         </button>
                       );
@@ -759,11 +1034,6 @@ export default function CheckoutModal({
                             : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
                           }`}
                       >
-                        {(isCustomTimeActive || showCustomTime) && (
-                          <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                            <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
-                          </span>
-                        )}
                         <Clock className="w-3.5 h-3.5 text-current shrink-0" />
                         <span className="text-xs font-bold truncate">
                           {isCustomTimeActive && selectedTimeSlot ? selectedTimeSlot : "Custom"}
@@ -859,12 +1129,11 @@ export default function CheckoutModal({
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                     <div>
                       <h4 className="font-extrabold text-sm text-foreground flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-[#782860]" /> Select Service Location
                       </h4>
-                      <p className="text-xs text-slate-400 mt-0.5">Specify where our uniformed team will perform the work</p>
                     </div>
                     <button
                       type="button"
@@ -931,7 +1200,7 @@ export default function CheckoutModal({
                           <div className="flex items-start gap-3">
                             <div className={`w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center shrink-0 mt-1 transition-all ${isSelected ? "border-[#782860] bg-[#782860]" : "border-slate-300 dark:border-slate-700"
                               }`}>
-                              {isSelected && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                              {isSelected && <Check className="w-3 h-3 text-white stroke-[3]" />}
                             </div>
                             <div className="space-y-1 text-left">
                               <div className="flex flex-wrap items-center gap-1.5">
@@ -1050,9 +1319,11 @@ export default function CheckoutModal({
 
               {/* Payment Options List */}
               <div className="text-left space-y-3">
-                <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5 mb-2">
-                  <CreditCard className="w-4 h-4 text-accent-lux" /> Select Payment Method
-                </h4>
+                <div className="border-b border-slate-100 dark:border-slate-800 pb-3 mb-2">
+                  <h4 className="font-extrabold text-sm text-foreground flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-accent-lux" /> Complete Secure Checkout
+                  </h4>
+                </div>
 
                 {/* Pay After Service - Available & Selected */}
                 <div
@@ -1148,7 +1419,7 @@ export default function CheckoutModal({
                   <span>Invoice Ready</span>
                 </div>
                 <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
-                  <p><strong>Scheduled Date:</strong> {selectedDate}</p>
+                  <p><strong>Scheduled Date:</strong> {formatDDMMYYYY(selectedDate)}</p>
                   <p><strong>Arrival Window:</strong> {selectedTimeSlot}</p>
                   <p><strong>Total Authorized:</strong> ₹{total}</p>
                 </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   MapPin,
   User,
@@ -9,10 +9,11 @@ import {
   Home,
   Building,
   Check,
-  CheckCircle2,
-  Sparkles,
   Loader2,
+  ChevronDown,
+  Search,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Address, AddressRecipientType, useStore } from "@/store/useStore";
 import { getLocalitiesApi } from "@/services/addressApi";
 import { toast } from "@/components/common/Toast";
@@ -56,6 +57,11 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
   // Dynamic Varanasi Active Zones API State (No hardcoded fallback)
   const [localities, setLocalities] = useState<{ id: string; name: string; pincode: string }[]>([]);
   const [isLoadingLocalities, setIsLoadingLocalities] = useState<boolean>(true);
+
+  // Custom Locality Dropdown States
+  const [isLocalityDropdownOpen, setIsLocalityDropdownOpen] = useState<boolean>(false);
+  const [localitySearch, setLocalitySearch] = useState<string>("");
+  const localityDropdownRef = useRef<HTMLDivElement>(null);
 
   const [locality, setLocality] = useState<string>(initialData?.locality || "");
   const [localityId, setLocalityId] = useState<string>(initialData?.localityId || "");
@@ -179,17 +185,39 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
     },
   ];
 
-  const quickTags = ["Home", "Work", "Parent's House", "Commercial Office", "Other"];
-
-  const handleLocalityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selected = e.target.value;
-    setLocality(selected);
-    const found = localities.find((l) => l.name === selected);
-    if (found) {
-      setLocalityId(found.id);
-      setPincode(found.pincode);
+  // Click outside to close custom locality dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        localityDropdownRef.current &&
+        !localityDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsLocalityDropdownOpen(false);
+      }
     }
+    if (isLocalityDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isLocalityDropdownOpen]);
+
+  const selectLocality = (loc: { id: string; name: string; pincode: string }) => {
+    setLocality(loc.name);
+    setLocalityId(loc.id);
+    if (loc.pincode) {
+      setPincode(loc.pincode);
+    }
+    setIsLocalityDropdownOpen(false);
+    setLocalitySearch("");
   };
+
+  const filteredLocalities = localities.filter((loc) => {
+    if (!localitySearch.trim()) return true;
+    const q = localitySearch.toLowerCase();
+    return loc.name.toLowerCase().includes(q) || loc.pincode.toLowerCase().includes(q);
+  });
 
   const handleRecipientTypeSelect = (type: AddressRecipientType) => {
     setRecipientType(type);
@@ -262,254 +290,314 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
   return (
     <form
       onSubmit={handleSubmit}
-      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 md:p-6 space-y-6 shadow-xl text-left transition-all ${className}`}
+      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4 shadow-lg text-left transition-all ${className}`}
     >
-      {/* HEADER BADGE */}
-      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-2xl bg-[#782860]/10 text-[#782860] dark:bg-[#782860]/20 dark:text-purple-300">
-            <MapPin className="w-5 h-5" />
-          </div>
-          <div>
-            <h4 className="font-extrabold text-sm text-foreground tracking-tight flex items-center gap-2">
-              Delivery Address & Recipient Specs
-              <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-            </h4>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-              Varanasi active zone service location & recipient details
-            </p>
-          </div>
+      {/* HEADER */}
+      <div className="flex items-center gap-2.5 border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="p-1.5 rounded-lg bg-[#782860]/10 text-[#782860] dark:bg-[#782860]/20 dark:text-purple-300">
+          <MapPin className="w-4 h-4" />
         </div>
+        <h4 className="font-bold text-sm text-foreground tracking-tight">
+          Address Details
+        </h4>
       </div>
 
-      {/* SECTION 1: RECIPIENT TYPE & ADDRESS LABEL */}
-      <div className="p-4 md:p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200/80 dark:border-slate-800 space-y-4">
-        <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-extrabold text-xs">
-          <User className="w-4 h-4 text-[#782860]" />
-          <span>1. Address Tag & Recipient Relationship</span>
+      {/* 1. VARANASI LOCALITY & PINCODE */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div ref={localityDropdownRef} className="relative">
+          <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            Locality (Varanasi) *
+          </label>
+
+          {/* Custom Dropdown Trigger */}
+          <button
+            type="button"
+            onClick={() => {
+              if (!isLoadingLocalities && localities.length > 0) {
+                setIsLocalityDropdownOpen((prev) => !prev);
+              }
+            }}
+            disabled={isLoadingLocalities || localities.length === 0}
+            className={`w-full bg-slate-50 dark:bg-slate-800/80 border text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+              isLocalityDropdownOpen
+                ? "border-[#782860] ring-2 ring-[#782860]/20 bg-white dark:bg-slate-900"
+                : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0 flex-1 truncate">
+              <MapPin className="w-3.5 h-3.5 text-[#782860] shrink-0" />
+              {isLoadingLocalities ? (
+                <span className="text-slate-400 flex items-center gap-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin text-[#782860]" /> Loading localities...
+                </span>
+              ) : locality ? (
+                <span className="text-foreground truncate font-bold flex items-center gap-1.5">
+                  {locality}
+                  {pincode && (
+                    <span className="text-[10px] font-mono font-medium px-1.5 py-0.2 rounded bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                      {pincode}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-slate-400">Select locality</span>
+              )}
+            </div>
+
+            <ChevronDown
+              className={`w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${
+                isLocalityDropdownOpen ? "rotate-180 text-[#782860]" : ""
+              }`}
+            />
+          </button>
+
+          {/* Custom Animated Menu */}
+          <AnimatePresence>
+            {isLocalityDropdownOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                transition={{ duration: 0.15 }}
+                className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl overflow-hidden text-left"
+              >
+                {/* Search Input inside Dropdown */}
+                <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40">
+                  <div className="relative flex items-center">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={localitySearch}
+                      onChange={(e) => setLocalitySearch(e.target.value)}
+                      placeholder="Search locality..."
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 pl-8 pr-2.5 py-1.5 rounded-xl text-xs text-foreground placeholder:text-slate-400 focus:outline-none focus:border-[#782860]"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                {/* Localities List */}
+                <div className="max-h-52 overflow-y-auto p-1.5 space-y-0.5">
+                  {filteredLocalities.length === 0 ? (
+                    <div className="py-4 text-center text-xs text-slate-400">
+                      No matching locality found
+                    </div>
+                  ) : (
+                    filteredLocalities.map((loc) => {
+                      const isSelected = loc.name.toLowerCase() === locality.toLowerCase() || loc.id === localityId;
+                      return (
+                        <button
+                          key={loc.id}
+                          type="button"
+                          onClick={() => selectLocality(loc)}
+                          className={`w-full px-2.5 py-2 rounded-xl text-xs font-semibold text-left transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                            isSelected
+                              ? "bg-[#782860]/10 text-[#782860] dark:text-purple-300 font-bold"
+                              : "text-foreground hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate min-w-0">
+                            <span className="truncate">{loc.name}</span>
+                            {loc.pincode && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 shrink-0">
+                                {loc.pincode}
+                              </span>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <Check className="w-3.5 h-3.5 text-[#782860] shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* Quick Tag Selector & Custom Title */}
-        <div className="space-y-2">
-          <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
-            Address Title Tag *
+        <div>
+          <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            Pincode *
           </label>
-          <div className="flex flex-wrap gap-2">
-            {quickTags.map((t) => {
-              const isSelected = tag === t;
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTag(t)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                    isSelected
-                      ? "bg-[#782860] text-white shadow-md shadow-[#782860]/20 scale-102"
-                      : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-[#782860]/40"
-                  }`}
-                >
-                  {t === "Home" ? <Home className="w-3 h-3" /> : t === "Work" ? <Briefcase className="w-3 h-3" /> : <Building className="w-3 h-3" />}
-                  {t}
-                </button>
-              );
-            })}
-          </div>
           <input
             type="text"
-            value={tag}
-            onChange={(e) => setTag(e.target.value)}
-            placeholder="e.g. Home (Primary), Parents Flat, Office Annex..."
-            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 rounded-xl text-xs text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-[#782860]/30 transition-all mt-1"
+            value={pincode}
+            onChange={(e) => setPincode(e.target.value)}
+            placeholder="6-digit pincode"
+            maxLength={6}
+            className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 px-3 py-2 rounded-xl text-xs font-mono font-bold text-foreground focus:outline-none focus:border-[#782860]"
             required
           />
         </div>
-
-        {/* Recipient Badges */}
-        <div className="space-y-2 pt-1">
-          <label className="text-[11px] font-extrabold text-slate-700 dark:text-slate-300 block flex items-center justify-between">
-            <span>Who is this service address for?</span>
-            <span className="text-[9px] uppercase font-bold text-[#782860] dark:text-purple-400">Recipient Badge</span>
-          </label>
-          <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
-            {recipientBadges.map((b) => {
-              const Icon = b.icon;
-              const isSelected = recipientType === b.type;
-              return (
-                <button
-                  key={b.type}
-                  type="button"
-                  onClick={() => handleRecipientTypeSelect(b.type)}
-                  className={`p-2.5 rounded-xl text-center font-bold text-[11px] transition-all cursor-pointer flex flex-col items-center gap-1.5 ${
-                    isSelected
-                      ? `${b.activeBg} shadow-sm ring-2 ring-offset-1 ring-purple-500/20 scale-102`
-                      : b.inactiveBg
-                  }`}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span className="leading-tight text-[10px]">{b.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Recipient Contact Details Input (Required if non-Self or optional) */}
-        {recipientType !== "Self" && (
-          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900/50 space-y-3 animate-in fade-in duration-200">
-            <div className="flex items-center gap-2 text-xs font-extrabold text-amber-700 dark:text-amber-400">
-              <Users className="w-3.5 h-3.5" />
-              <span>Recipient Contact Details ({recipientType})</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
-                  Recipient Name *
-                </label>
-                <input
-                  type="text"
-                  value={recipientName}
-                  onChange={(e) => setRecipientName(e.target.value)}
-                  placeholder="e.g. Mrs. Sunita Sharma (Mother)"
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-amber-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
-                  Recipient Mobile Number *
-                </label>
-                <input
-                  type="tel"
-                  maxLength={10}
-                  value={recipientPhone}
-                  onChange={(e) => {
-                    const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
-                    setRecipientPhone(digits);
-                  }}
-                  placeholder="e.g. 9876543210"
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:border-amber-500"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* SECTION 2: VARANASI LOCALITY & STREET ADDRESS */}
-      <div className="p-4 md:p-5 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-900/40 space-y-4">
-        <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-300 font-extrabold text-xs border-b border-emerald-200/80 dark:border-emerald-900/40 pb-2">
-          <MapPin className="w-4 h-4 text-emerald-600" />
-          <span>2. Varanasi Locality & Street Address</span>
+      {/* 2. ADDRESS LINE & LANDMARK */}
+      <div>
+        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+          Address (House / Flat / Street) *
+        </label>
+        <textarea
+          rows={2}
+          value={streetAddress}
+          onChange={(e) => setStreetAddress(e.target.value)}
+          placeholder="Flat / House no., Building, Street, Area..."
+          className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 p-2.5 rounded-xl text-xs text-foreground font-semibold focus:outline-none focus:border-[#782860]"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
+          Landmark (Optional)
+        </label>
+        <input
+          type="text"
+          value={landmark}
+          onChange={(e) => setLandmark(e.target.value)}
+          placeholder="Nearby landmark or spot"
+          className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 px-3 py-2 rounded-xl text-xs text-foreground font-semibold focus:outline-none focus:border-[#782860]"
+        />
+      </div>
+
+      {/* 3. ADDRESS TITLE TAG (SLIM & SMALL) */}
+      <div className="space-y-1.5 pt-1">
+        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+          Address Tag *
+        </label>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {["Home", "Work", "Other"].map((t) => {
+            const isSelected = t === "Other" ? (tag !== "Home" && tag !== "Work") : tag === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => {
+                  if (t === "Other") {
+                    if (tag === "Home" || tag === "Work") setTag("");
+                  } else {
+                    setTag(t);
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  isSelected
+                    ? "bg-[#782860] text-white shadow-xs"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-[#782860]/40"
+                }`}
+              >
+                {t === "Home" ? <Home className="w-3 h-3" /> : t === "Work" ? <Briefcase className="w-3 h-3" /> : <Building className="w-3 h-3" />}
+                {t}
+              </button>
+            );
+          })}
+          {(tag !== "Home" && tag !== "Work") && (
+            <input
+              type="text"
+              value={tag}
+              onChange={(e) => setTag(e.target.value)}
+              placeholder="Tag name (e.g. Parents)"
+              className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-lg text-xs font-semibold text-foreground focus:outline-none focus:border-[#782860] w-36"
+              autoFocus
+              required
+            />
+          )}
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
-              Varanasi Active Zone *
-            </label>
-            <select
-              value={locality}
-              onChange={handleLocalityChange}
-              disabled={isLoadingLocalities || localities.length === 0}
-              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 rounded-xl text-xs text-foreground font-semibold focus:outline-none focus:border-emerald-500 cursor-pointer disabled:opacity-60"
-            >
-              {isLoadingLocalities ? (
-                <option value="">Loading active zones...</option>
-              ) : localities.length === 0 ? (
-                <option value="">No data available</option>
-              ) : (
-                <>
-                  <option value="" disabled>Select active locality</option>
-                  {localities.map((loc) => (
-                    <option key={loc.id} value={loc.name}>
-                      {loc.name} {loc.pincode ? `(${loc.pincode})` : ""}
-                    </option>
-                  ))}
-                </>
-              )}
-            </select>
-            {!isLoadingLocalities && localities.length === 0 && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-1">
-                No data available.
-              </p>
-            )}
-          </div>
+      {/* 4. WHO IS THIS SERVICE ADDRESS FOR (SLIM & SMALL) */}
+      <div className="space-y-1.5 pt-1">
+        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+          Who is this for?
+        </label>
+        <div className="flex flex-wrap gap-1.5">
+          {recipientBadges.map((b) => {
+            const Icon = b.icon;
+            const isSelected = recipientType === b.type;
+            return (
+              <button
+                key={b.type}
+                type="button"
+                onClick={() => handleRecipientTypeSelect(b.type)}
+                className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                  isSelected
+                    ? "bg-[#782860] text-white shadow-xs"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-[#782860]/40"
+                }`}
+              >
+                <Icon className="w-3 h-3 shrink-0" />
+                <span>{b.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
+      {/* RECIPIENT CONTACT (IF NON-SELF) */}
+      {recipientType !== "Self" && (
+        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-2 gap-2.5 animate-in fade-in duration-200">
           <div>
-            <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
-              Pincode *
+            <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+              Recipient Name *
             </label>
             <input
               type="text"
-              value={pincode}
-              onChange={(e) => setPincode(e.target.value)}
-              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 rounded-xl text-xs font-mono font-bold text-foreground focus:outline-none focus:border-emerald-500"
+              value={recipientName}
+              onChange={(e) => setRecipientName(e.target.value)}
+              placeholder="Name"
+              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#782860]"
+              required
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+              Recipient Mobile *
+            </label>
+            <input
+              type="tel"
+              maxLength={10}
+              value={recipientPhone}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                setRecipientPhone(digits);
+              }}
+              placeholder="10-digit mobile"
+              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold focus:outline-none focus:border-[#782860]"
               required
             />
           </div>
         </div>
+      )}
 
-        <div>
-          <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
-            Address *
-          </label>
-          <textarea
-            rows={2}
-            value={streetAddress}
-            onChange={(e) => setStreetAddress(e.target.value)}
-            placeholder="Flat/House No., Building Name, Street, Colony, Lane details..."
-            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-xs text-foreground font-semibold focus:outline-none focus:border-emerald-500"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
-            Landmark / Nearby Spot
-          </label>
-          <input
-            type="text"
-            value={landmark}
-            onChange={(e) => setLandmark(e.target.value)}
-            placeholder="e.g. Near BHU Main Gate / Galaxy Hospital"
-            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 rounded-xl text-xs text-foreground font-semibold focus:outline-none focus:border-emerald-500"
-          />
-        </div>
-      </div>
-
-      {/* SECTION 3: DEFAULT LOCATION TOGGLE */}
-      <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-        <div className="flex items-center gap-2.5">
-          <CheckCircle2 className={`w-4 h-4 ${isDefault ? "text-emerald-500" : "text-slate-400"}`} />
-          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-            Set as Primary Default Delivery Address
-          </span>
-        </div>
+      {/* 5. DEFAULT ADDRESS CHECKBOX */}
+      <label className="flex items-center gap-2 cursor-pointer pt-1 select-none">
         <input
           type="checkbox"
           checked={isDefault}
           onChange={(e) => setIsDefault(e.target.checked)}
           className="w-4 h-4 accent-[#782860] rounded cursor-pointer"
         />
-      </div>
+        <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+          Set as default address
+        </span>
+      </label>
 
-      {/* ACTION BUTTONS */}
-      <div className="flex items-center justify-end gap-3 pt-2">
+      {/* 6. ACTION BUTTONS */}
+      <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="px-5 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer transition-colors"
+            className="px-3.5 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer transition-colors"
           >
             Cancel
           </button>
         )}
         <button
           type="submit"
-          className="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-[#782860] via-[#8c2d70] to-amber-600 hover:opacity-95 text-xs font-black text-white cursor-pointer shadow-lg shadow-[#782860]/25 transition-all flex items-center gap-1.5"
+          className="px-4 py-2 rounded-xl border border-[#782860] text-[#782860] dark:text-purple-300 bg-[#782860]/5 dark:bg-[#782860]/15 hover:bg-[#782860] hover:text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
         >
-          <Check className="w-4 h-4" /> Save Address
+          <Check className="w-3.5 h-3.5" /> Save Address
         </button>
       </div>
     </form>

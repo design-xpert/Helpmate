@@ -1300,12 +1300,15 @@ function ServiceDetailPageContent({ params }: PageProps) {
     if (isAlreadyInCart) return;
 
     triggerSmallConfetti(e);
+    const pkgImg = (selectedItem as any)?.image || (selectedItem as any)?.imageUrl || (packageId ? `/api/media/package/${packageId}/image` : "");
     addToCart({
       id: packageId,
       name: activeName,
       price: activePrice,
       category: service.category,
       duration: activeDuration,
+      image: pkgImg,
+      imageUrl: pkgImg,
     });
   };
 
@@ -1320,12 +1323,15 @@ function ServiceDetailPageContent({ params }: PageProps) {
     );
 
     if (!isAlreadyInCart) {
+      const pkgImg = (selectedItem as any)?.image || (selectedItem as any)?.imageUrl || (packageId ? `/api/media/package/${packageId}/image` : "");
       addToCart({
         id: packageId,
         name: activeName,
         price: activePrice,
         category: service.category,
         duration: activeDuration,
+        image: pkgImg,
+        imageUrl: pkgImg,
       });
     }
 
@@ -1345,6 +1351,8 @@ function ServiceDetailPageContent({ params }: PageProps) {
 
     triggerSmallConfetti(e);
     const pkgName = item.packageName || item.name || `${currentSub?.name} ${currentAct?.name}`;
+    const rawImg = item.imageUrl || item.thumbnailUrl || (item as any).image;
+    const pkgImg = rawImg || (packageId ? `/api/media/package/${packageId}/image` : "");
 
     addToCart({
       id: packageId,
@@ -1352,6 +1360,8 @@ function ServiceDetailPageContent({ params }: PageProps) {
       price: item.price,
       category: activeCategory?.categoryName || service?.category || "Service",
       duration: item.duration || 30,
+      image: pkgImg,
+      imageUrl: pkgImg,
     });
   };
 
@@ -1367,12 +1377,16 @@ function ServiceDetailPageContent({ params }: PageProps) {
 
     if (!isAlreadyInCart) {
       const pkgName = item.packageName || item.name || `${currentSub?.name} ${currentAct?.name}`;
+      const rawImg = item.imageUrl || item.thumbnailUrl || (item as any).image;
+      const pkgImg = rawImg || (packageId ? `/api/media/package/${packageId}/image` : "");
       addToCart({
         id: packageId,
         name: pkgName,
         price: item.price,
         category: activeCategory?.categoryName || service?.category || "Service",
         duration: item.duration || 30,
+        image: pkgImg,
+        imageUrl: pkgImg,
       });
     }
 
@@ -1769,6 +1783,8 @@ function ServiceDetailPageContent({ params }: PageProps) {
                                           price: activePrice,
                                           category: service.category,
                                           duration: activeDuration,
+                                          image: (selectedItem as any)?.image || (selectedItem as any)?.imageUrl || service.image,
+                                          imageUrl: (selectedItem as any)?.image || (selectedItem as any)?.imageUrl || service.image,
                                         });
                                       }
                                     }
@@ -1967,24 +1983,58 @@ function ServiceDetailPageContent({ params }: PageProps) {
               <span className="text-[10px] uppercase font-bold text-accent-lux bg-accent-lux/10 px-2.5 py-1 rounded tracking-widest font-sans inline-block mb-3.5">
                 Service Category
               </span>
-              <h1 className="text-3xl sm:text-4xl font-extrabold text-foreground tracking-tight leading-tight">
-                {activeCategory?.categoryName || getCategoryDisplayName(service.category)}
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed mt-2.5 max-w-2xl">
-                Varanasi's custom interactive luxury wizard. Choose your device system parameters below to see active service packages and prices.
-              </p>
+              {loadingSubCategories && !activeCategory ? (
+                <div className="space-y-2 mt-1">
+                  <div className="h-9 sm:h-10 w-64 sm:w-80 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse" />
+                  <div className="h-4 w-96 max-w-full bg-slate-200/60 dark:bg-slate-800/60 rounded animate-pulse" />
+                </div>
+              ) : (
+                <>
+                  <h1 className="text-3xl sm:text-4xl font-extrabold text-foreground tracking-tight leading-tight">
+                    {activeCategory?.categoryName || getCategoryDisplayName(service.category)}
+                  </h1>
+                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed mt-2.5 max-w-2xl">
+                    Varanasi's custom interactive luxury wizard. Choose your device system parameters below to see active service packages and prices.
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
               {/* Left Column - Stepper Wizard */}
               <div className="lg:col-span-8 space-y-6">
-                <div className="glass-panel p-6 sm:p-8 border border-slate-200/10 space-y-6 text-left">
-
+                <div id="booking-wizard-card" className="glass-panel p-6 sm:p-8 border border-slate-200/10 space-y-6 text-left">
 
                   {/* Progress Tracker Stepper circles with labels & click to navigate */}
                   <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
-                    {hasSubCategories ? (
+                    {loadingSubCategories ? (
+                      <div className="flex items-center gap-1.5 sm:gap-3 w-full font-sans animate-pulse">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
+                          <div className="hidden sm:block space-y-1">
+                            <div className="h-2 w-10 bg-slate-200 dark:bg-slate-800 rounded" />
+                            <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
+                          </div>
+                        </div>
+                        <div className="h-0.5 flex-1 bg-slate-200 dark:bg-slate-800" />
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
+                          <div className="hidden sm:block space-y-1">
+                            <div className="h-2 w-10 bg-slate-200 dark:bg-slate-800 rounded" />
+                            <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
+                          </div>
+                        </div>
+                        <div className="h-0.5 flex-1 bg-slate-200 dark:bg-slate-800" />
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
+                          <div className="hidden sm:block space-y-1">
+                            <div className="h-2 w-10 bg-slate-200 dark:bg-slate-800 rounded" />
+                            <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
+                          </div>
+                        </div>
+                      </div>
+                    ) : hasSubCategories ? (
                       <div className="flex items-center gap-1.5 sm:gap-3 w-full font-sans">
                         {/* Step 1: Type */}
                         <button
@@ -2129,65 +2179,83 @@ function ServiceDetailPageContent({ params }: PageProps) {
 
                   {/* Step-by-Step Stepper Workflow Layout (Switches View per Step) */}
                   <div className="space-y-6">
-                    {/* Step 1: SubCategory / Service Type Selector (only shown when active) */}
-                    {effectiveStepView === "subcategory" && hasSubCategories && (
+                    {/* Shimmer skeleton shown while category/subcategories are loading on category click */}
+                    {loadingSubCategories ? (
                       <div className="space-y-4 animate-fadeIn">
                         <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-                          <div>
-                            <span className="text-[10px] uppercase font-bold text-accent-lux tracking-wider block">
-                              Step 1 of 3
-                            </span>
-                            <h3 className="text-sm sm:text-base font-extrabold text-slate-800 dark:text-white">
-                              Select Service Type
-                            </h3>
-                            <p className="text-xs text-slate-400 mt-0.5">
-                              Choose your appliance or system type to customize your service
-                            </p>
+                          <div className="space-y-1.5">
+                            <div className="h-3 w-20 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
+                            <div className="h-5 w-44 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
+                            <div className="h-3 w-64 max-w-full bg-slate-200/60 dark:bg-slate-800/60 rounded animate-pulse" />
                           </div>
                         </div>
 
-                        {loadingSubCategories ? (
-                          <div className="grid grid-cols-2 gap-3">
-                            {[1, 2, 3, 4].map((n) => (
-                              <div key={n} className="h-14 rounded-2xl bg-slate-200/70 dark:bg-slate-800/70 relative overflow-hidden animate-pulse" />
-                            ))}
-                          </div>
-                        ) : apiSubCategories.length > 0 ? (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                            {apiSubCategories.map((sub) => {
-                              const isActive = selectedSub === sub._id || selectedSub === sub.name;
-                              return (
-                                <button
-                                  key={sub._id}
-                                  onClick={() => {
-                                    setSelectedSub(sub._id);
-                                    setSelectedAct(null);
-                                    setApiPackages([]);
-                                    setStepView("action");
-                                  }}
-                                  className={`p-4 rounded-2xl text-xs font-normal tracking-wide text-center transition-all cursor-pointer hover:scale-[1.02] flex flex-col items-center justify-center gap-2 group shadow-sm hover:shadow-md ${
-                                    isActive
-                                      ? "bg-[#48073d] text-white dark:bg-accent-lux shadow-md shadow-accent-lux/20 ring-2 ring-accent-lux"
-                                      : "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 hover:border-accent-lux/40 border border-slate-200/60 dark:border-slate-800"
-                                  }`}
-                                >
-                                  <TileIconDisplay
-                                    iconUrl={sub.iconUrl}
-                                    name={sub.name}
-                                    fallbackChar="S"
-                                    isActive={isActive}
-                                  />
-                                  <span className="font-normal leading-snug break-words max-w-full text-center">{sub.name}</span>
-                                  <span className={`text-[10px] font-normal transition-colors ${isActive ? "text-white/80" : "text-slate-400 group-hover:text-accent-lux"}`}>
-                                    Select →
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        ) : null}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                          {[1, 2, 3, 4, 5, 6].map((n) => (
+                            <div
+                              key={n}
+                              className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 flex flex-col items-center justify-center gap-2.5 animate-pulse shadow-xs"
+                            >
+                              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-purple-50 dark:bg-purple-950/60 border border-purple-100/60 dark:border-purple-900/40" />
+                              <div className="h-3.5 bg-slate-200/80 dark:bg-slate-800/80 rounded w-24" />
+                              <div className="h-2 bg-slate-200/50 dark:bg-slate-800/50 rounded w-12" />
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    )}
+                    ) : (
+                      <>
+                        {/* Step 1: SubCategory / Service Type Selector (only shown when active) */}
+                        {effectiveStepView === "subcategory" && hasSubCategories && (
+                          <div className="space-y-4 animate-fadeIn">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                              <div>
+                                <span className="text-[10px] uppercase font-bold text-accent-lux tracking-wider block">
+                                  Step 1 of 3
+                                </span>
+                                <h3 className="text-sm sm:text-base font-extrabold text-slate-800 dark:text-white">
+                                  Select Service Type
+                                </h3>
+                                <p className="text-xs text-slate-400 mt-0.5">
+                                  Choose your appliance or system type to customize your service
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                              {apiSubCategories.map((sub) => {
+                                const isActive = selectedSub === sub._id || selectedSub === sub.name;
+                                return (
+                                  <button
+                                    key={sub._id}
+                                    onClick={() => {
+                                      setSelectedSub(sub._id);
+                                      setSelectedAct(null);
+                                      setApiPackages([]);
+                                      setStepView("action");
+                                    }}
+                                    className={`p-4 rounded-2xl text-xs font-normal tracking-wide text-center transition-all cursor-pointer hover:scale-[1.02] flex flex-col items-center justify-center gap-2 group shadow-sm hover:shadow-md ${
+                                      isActive
+                                        ? "bg-[#48073d] text-white dark:bg-accent-lux shadow-md shadow-accent-lux/20 ring-2 ring-accent-lux"
+                                        : "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 hover:border-accent-lux/40 border border-slate-200/60 dark:border-slate-800"
+                                    }`}
+                                  >
+                                    <TileIconDisplay
+                                      iconUrl={sub.iconUrl}
+                                      name={sub.name}
+                                      fallbackChar="S"
+                                      isActive={isActive}
+                                    />
+                                    <span className="font-normal leading-snug break-words max-w-full text-center">{sub.name}</span>
+                                    <span className={`text-[10px] font-normal transition-colors ${isActive ? "text-white/80" : "text-slate-400 group-hover:text-accent-lux"}`}>
+                                      Select →
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
 
                     {/* Step 2 (or Step 1 if no subcategories): Action Type Selector (only shown when active) */}
                     {effectiveStepView === "action" && (
@@ -2643,7 +2711,9 @@ function ServiceDetailPageContent({ params }: PageProps) {
                         })()}
                       </div>
                     )}
-                  </div>
+                  </>
+                )}
+              </div>
 
                   {/* Trust/Guarantee checklist */}
                   <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-455 border-t border-slate-100 dark:border-slate-800 pt-4">

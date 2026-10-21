@@ -62,19 +62,26 @@ export function formatImageUrl(imgUrl?: string): string {
 }
 
 /**
- * Returns initials from a name (two letters if two or more words available, otherwise single letter).
- * e.g., "Home Cleaning" -> "HC", "AC Repair" -> "AR", "Plumber" -> "P"
+ * Returns a clean initial letter from a name (extracts only alphabetical letter [A-Z], strictly ignoring & % and special characters).
+ * e.g., "Cleaning & Pest Control" -> "C", "AC Repair" -> "A", "Plumber" -> "P"
  */
 export function getNameInitials(name?: string, fallback: string = "P"): string {
-  if (!name || typeof name !== "string") return fallback;
-  const words = name
-    .trim()
-    .split(/[\s\-_/]+/)
-    .filter(Boolean);
-  if (words.length >= 2) {
-    const first = words[0].charAt(0);
-    const second = words[1].charAt(0);
-    return (first + second).toUpperCase();
+  const sanitizeLetter = (char?: string): string => {
+    if (!char) return "";
+    const match = char.match(/[a-zA-Z]/);
+    return match ? match[0].toUpperCase() : "";
+  };
+
+  const cleanFallback = sanitizeLetter(fallback) || "P";
+
+  if (!name || typeof name !== "string") return cleanFallback;
+
+  // Extract the first pure alphabetical character [a-zA-Z]
+  const match = name.match(/[a-zA-Z]/);
+  if (match) {
+    return match[0].toUpperCase();
   }
-  return (words[0]?.charAt(0) || fallback).toUpperCase();
+
+  return cleanFallback;
 }
+

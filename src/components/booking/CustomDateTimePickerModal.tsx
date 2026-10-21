@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, RotateCcw, Clock as ClockIcon } from "lucide-react";
-import { isPastTime } from "@/utils/dateTime";
+import { isPastTime, formatDDMMYYYY } from "@/utils/dateTime";
 
 interface InlineCustomDatePickerProps {
   selectedDate: string | null;
@@ -177,7 +177,7 @@ export function InlineCustomDatePicker({
       {/* Footer Reset Section */}
       <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
         <span className="text-[11px] font-bold text-slate-400 truncate">
-          {selectedDate || "Select date"}
+          {selectedDate ? formatDDMMYYYY(selectedDate) : "Select date"}
         </span>
         <button
           type="button"

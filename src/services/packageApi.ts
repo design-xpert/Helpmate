@@ -94,8 +94,9 @@ export async function fetchCustomerPackagesApi(
     if (normalizedParams.maxBudget !== undefined && normalizedParams.maxBudget > 0) {
       queryParams.append("maxBudget", normalizedParams.maxBudget.toString());
     }
-    if (normalizedParams.page) queryParams.append("page", normalizedParams.page.toString());
-    if (normalizedParams.limit) queryParams.append("limit", normalizedParams.limit.toString());
+    if (normalizedParams.page) queryParams.append("page", Math.max(1, normalizedParams.page).toString());
+    const safeLimit = Math.min(50, Math.max(1, normalizedParams.limit || 50));
+    queryParams.append("limit", safeLimit.toString());
     if (normalizedParams.sort) queryParams.append("sort", normalizedParams.sort);
 
     const queryString = queryParams.toString();

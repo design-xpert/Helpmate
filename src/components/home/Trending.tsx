@@ -116,10 +116,13 @@ export default function Trending() {
       addToCart({
         id: service.id,
         itemId: service.id,
+        packageId: service.id,
         name: service.name,
         price: service.price,
         category: service.category,
         duration: service.duration,
+        image: service.image,
+        imageUrl: service.image,
       });
     }
 

@@ -109,3 +109,41 @@ export function formatDuration(duration: number | string | undefined | null): st
   const hrPart = wholeHrs === 1 ? "1 hr" : `${wholeHrs} hrs`;
   return `${num} mins (${hrPart} ${remMins} mins)`;
 }
+
+/**
+ * Formats a date string (YYYY-MM-DD or ISO) into DD-MM-YYYY format.
+ * e.g., "2026-10-20" -> "20-10-2026"
+ */
+export function formatDDMMYYYY(dateStr?: string | null): string {
+  if (!dateStr) return "";
+  try {
+    const clean = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr.trim();
+    const parts = clean.split("-");
+    if (parts.length === 3) {
+      const [year, month, day] = parts;
+      if (year.length === 4) {
+        return `${day.padStart(2, "0")}-${month.padStart(2, "0")}-${year}`;
+      }
+    }
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`;
+    }
+  } catch {
+    // fallback
+  }
+  return dateStr || "";
+}
+
+/**
+ * Formats date and time into "DD-MM-YYYY hh:mm A" (e.g. "20-10-2026 09:00 AM").
+ */
+export function formatScheduleDateTime(dateStr?: string | null, timeStr?: string | null): string {
+  const formattedDate = formatDDMMYYYY(dateStr);
+  if (!formattedDate && !timeStr) return "";
+  if (formattedDate && timeStr) return `${formattedDate} ${timeStr}`;
+  return formattedDate || timeStr || "";
+}

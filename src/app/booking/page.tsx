@@ -41,13 +41,16 @@ import Footer from "@/components/common/Footer";
 import confetti from "canvas-confetti";
 
 import { InlineCustomDatePicker, InlineCustomTimePicker } from "@/components/booking/CustomDateTimePickerModal";
-import { isPastDate, isPastTime, formatDuration } from "@/utils/dateTime";
+import { isPastDate, isPastTime, formatDuration, formatDDMMYYYY, formatScheduleDateTime } from "@/utils/dateTime";
 import { AvailableCouponsSlider } from "@/components/booking/AvailableCouponsSlider";
 import MembershipBanner from "@/components/membership/MembershipBanner";
 import { AddAddressForm } from "@/components/booking/AddAddressForm";
 import { toast } from "@/components/common/Toast";
 import { fetchScheduleAvailabilityApi } from "@/services/scheduleApi";
-import { fetchCustomerPackagesApi } from "@/services/packageApi";
+import { fetchCustomerPackagesApi, fetchCustomerPackageDetailsApi } from "@/services/packageApi";
+import { formatImageUrl, getNameInitials } from "@/utils/image";
+import { CartPackageImage } from "@/components/booking/CartPackageImage";
+import { CartAddonImage } from "@/components/booking/CartAddonImage";
 
 function BookingContent() {
   const router = useRouter();
@@ -107,46 +110,139 @@ function BookingContent() {
   const [showCouponsSlider, setShowCouponsSlider] = useState(false);
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   const [cartPackageAddons, setCartPackageAddons] = useState<any[]>([]);
+  const [packageImageMap, setPackageImageMap] = useState<Record<string, string>>({});
 
   // Load available package addons for items currently in cart
   useEffect(() => {
     let isMounted = true;
     async function loadCartAddons() {
       if (!cart || cart.length === 0) {
-        if (isMounted) setCartPackageAddons([]);
+        if (isMounted) {
+          setCartPackageAddons([]);
+          setPackageImageMap({});
+        }
         return;
       }
 
       try {
         const res = await fetchCustomerPackagesApi({ limit: 50 });
-        if (isMounted && res.success && res.data) {
-          const cartItemIds = cart.map((c) => String(c.id || c.itemId));
-          const matchedAddons: any[] = [];
-          const seenAddonIds = new Set<string>();
+        if (!isMounted) return;
 
+        const cartItemIds = new Set<string>();
+        const cartNames = new Set<string>();
+        cart.forEach((c) => {
+          if (c.id) cartItemIds.add(String(c.id));
+          if (c.itemId) cartItemIds.add(String(c.itemId));
+          if (c.packageId) cartItemIds.add(String(c.packageId));
+          const hexes = String(c.id || "").match(/[0-9a-fA-F]{24}/g);
+          if (hexes) hexes.forEach((h) => cartItemIds.add(h));
+          const itemHexes = String(c.itemId || "").match(/[0-9a-fA-F]{24}/g);
+          if (itemHexes) itemHexes.forEach((h) => cartItemIds.add(h));
+          const pkgHexes = String(c.packageId || "").match(/[0-9a-fA-F]{24}/g);
+          if (pkgHexes) pkgHexes.forEach((h) => cartItemIds.add(h));
+          if (c.name) cartNames.add(c.name.trim().toLowerCase());
+        });
+
+        const matchedAddons: any[] = [];
+        const seenAddonKeys = new Set<string>();
+        const matchedPkgHexes = new Set<string>();
+        const imgMap: Record<string, string> = {};
+
+        if (res.success && res.data) {
           res.data.forEach((pkgItem: any) => {
-            const pkgId = String(pkgItem.package?.id || pkgItem.package?._id);
-            const pkgName = pkgItem.package?.name || pkgItem.package?.packageName;
-            const isCartMatch = cartItemIds.some((cid) => cid === pkgId || cart.some((c) => c.name === pkgName));
+            const pkg = pkgItem.package || pkgItem;
+            const pkgId = String(pkg.id || pkg._id || pkgItem.id || pkgItem._id || "");
+            const pkgHex = (String(pkgId).match(/[0-9a-fA-F]{24}/) || [])[0] || "";
+            const pkgName = String(pkg.name || pkg.packageName || pkgItem.name || "").trim();
+            const pkgNameLower = pkgName.toLowerCase();
 
-            if (isCartMatch && pkgItem.addons && Array.isArray(pkgItem.addons)) {
-              pkgItem.addons.forEach((addon: any) => {
-                const aId = String(addon._id || addon.id);
-                if (!seenAddonIds.has(aId)) {
-                  seenAddonIds.add(aId);
-                  matchedAddons.push({
-                    id: aId,
-                    name: addon.addonName || addon.title || addon.name || "Service Add-on",
-                    price: addon.price || 0,
-                    description: addon.description || "",
-                    imageUrl: addon.imageUrl || "",
-                  });
-                }
+            const rawImg = pkg.imageUrl || pkg.thumbnailUrl || (pkg as any).image;
+            const formatted = rawImg ? formatImageUrl(rawImg) : (pkgHex ? `/api/media/package/${pkgHex}/image` : "");
+            if (formatted) {
+              if (pkgId) imgMap[pkgId] = formatted;
+              if (pkgHex) imgMap[pkgHex] = formatted;
+              if (pkgName) imgMap[pkgName] = formatted;
+            }
+
+            const isCartMatch =
+              (pkgId && cartItemIds.has(pkgId)) ||
+              (pkgHex && cartItemIds.has(pkgHex)) ||
+              (pkgNameLower && cartNames.has(pkgNameLower)) ||
+              cart.some((c) => {
+                const cLower = (c.name || "").trim().toLowerCase();
+                return cLower && (cLower === pkgNameLower || cLower.includes(pkgNameLower) || pkgNameLower.includes(cLower));
               });
+
+            if (isCartMatch) {
+              if (pkgHex) matchedPkgHexes.add(pkgHex);
+              if (pkgId) matchedPkgHexes.add(pkgId);
+
+              const rawAddons = pkgItem.addons || pkg.addons || (pkgItem.package && pkgItem.package.addons) || [];
+              if (Array.isArray(rawAddons)) {
+                rawAddons.forEach((addon: any) => {
+                  const aId = String(addon._id || addon.id || "");
+                  const aKey = `${pkgHex || pkgId}-${aId}`;
+                  if (aId && !seenAddonKeys.has(aKey)) {
+                    seenAddonKeys.add(aKey);
+                    matchedAddons.push({
+                      id: aId,
+                      packageId: pkgHex || pkgId,
+                      packageName: pkgName,
+                      name: addon.addonName || addon.title || addon.name || "Service Add-on",
+                      price: typeof addon.price === "number" ? addon.price : 0,
+                      description: addon.description || "",
+                      imageUrl: addon.imageUrl ? formatImageUrl(addon.imageUrl) : `/api/media/addon/${aId}/image`,
+                    });
+                  }
+                });
+              }
             }
           });
+        }
 
+        // Fallback: If any package in cart was not matched in the list, fetch details directly
+        for (const c of cart) {
+          const rawId = c.packageId || c.itemId || c.id;
+          const hex = (String(rawId).match(/[0-9a-fA-F]{24}/) || [])[0];
+          if (hex && !matchedPkgHexes.has(hex)) {
+            try {
+              const detailsRes = await fetchCustomerPackageDetailsApi(hex);
+              if (detailsRes.success && detailsRes.data) {
+                const p = detailsRes.data.package;
+                const pName = p?.name || c.name;
+                const pImg = p?.imageUrl ? formatImageUrl(p.imageUrl) : `/api/media/package/${hex}/image`;
+                imgMap[hex] = pImg;
+                if (pName) imgMap[pName] = pImg;
+
+                const addons = detailsRes.data.addons || [];
+                if (Array.isArray(addons)) {
+                  addons.forEach((addon: any) => {
+                    const aId = String(addon._id || addon.id || "");
+                    const aKey = `${hex}-${aId}`;
+                    if (aId && !seenAddonKeys.has(aKey)) {
+                      seenAddonKeys.add(aKey);
+                      matchedAddons.push({
+                        id: aId,
+                        packageId: hex,
+                        packageName: pName,
+                        name: addon.addonName || addon.title || addon.name || "Service Add-on",
+                        price: typeof addon.price === "number" ? addon.price : 0,
+                        description: addon.description || "",
+                        imageUrl: addon.imageUrl ? formatImageUrl(addon.imageUrl) : `/api/media/addon/${aId}/image`,
+                      });
+                    }
+                  });
+                }
+              }
+            } catch (err) {
+              console.error("Error fetching direct package details:", err);
+            }
+          }
+        }
+
+        if (isMounted) {
           setCartPackageAddons(matchedAddons);
+          setPackageImageMap(imgMap);
         }
       } catch (err) {
         console.error("Error fetching cart package addons:", err);
@@ -385,10 +481,10 @@ function BookingContent() {
     }
   };
 
-  const isStepCompleted = (idx: number) => {
+  const isStepCompleted = (idx: number): boolean => {
     if (idx === 0) return cart.length > 0;
-    if (idx === 1) return Boolean(selectedDate && selectedTimeSlot);
-    if (idx === 2) return Boolean((token || isLoggedIn) && selectedAddressId);
+    if (idx === 1) return isStepCompleted(0) && Boolean(selectedDate && selectedTimeSlot);
+    if (idx === 2) return isStepCompleted(1) && Boolean((token || isLoggedIn) && selectedAddressId && addresses.some((a) => a.id === selectedAddressId));
     if (idx === 3) return step === 4;
     return false;
   };
@@ -595,13 +691,13 @@ function BookingContent() {
                   {/* STEP 0: Cart Selection & Recommendations */}
                   {step === 0 && (
                     <div className="space-y-6">
-                      <div>
+                      <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
                         <h2 className="text-xl font-extrabold text-foreground tracking-tight flex items-center gap-2">
                           <ShoppingBag className="w-5 h-5 text-accent-lux" /> Review Service Selections
                         </h2>
-                        <p className="text-xs text-slate-450 mt-1">Review items currently slated for your luxury service window.</p>
                       </div>
 
+                      {/* BOOKED PACKAGES LIST */}
                       <div className="space-y-3">
                         {cart.length === 0 ? (
                           <div className="py-12 text-center flex flex-col items-center justify-center text-slate-400 space-y-3 bg-slate-50 dark:bg-slate-950/20 rounded-[24px]">
@@ -614,116 +710,201 @@ function BookingContent() {
                               (sum, a) => sum + (a.totalPrice || ((a.price || 0) * (a.quantity || 1))),
                               0
                             );
-                            const itemTotal = (item.price * item.quantity) + addonTotal;
+                            const itemBasePrice = item.price * item.quantity;
+                            const itemTotal = itemBasePrice + addonTotal;
+                            const rawPkgId = item.packageId || item.itemId || item.id;
+                            const hexMatch = String(rawPkgId).match(/[0-9a-fA-F]{24}/);
+                            const cleanPkgId = hexMatch ? hexMatch[0] : rawPkgId;
+                            const itemImg = item.imageUrl || item.image || packageImageMap[item.id] || (item.itemId && packageImageMap[item.itemId]) || (cleanPkgId && packageImageMap[cleanPkgId]) || packageImageMap[item.name];
 
                             return (
                               <div
                                 key={item.id}
                                 className="p-4 sm:p-5 bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-3"
                               >
-                                <div className="flex justify-between items-center">
-                                  <div>
-                                    <span className="text-xs sm:text-sm font-bold text-foreground">{item.name}</span>
-                                    <p className="text-[10px] text-slate-450 mt-1 capitalize">{item.category} • {formatDuration(item.duration)} • Qty: {item.quantity}</p>
+                                <div className="flex justify-between items-center gap-3.5 sm:gap-4">
+                                  <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                                    <CartPackageImage
+                                      src={itemImg}
+                                      name={item.name}
+                                      category={item.category}
+                                      pkgId={cleanPkgId}
+                                    />
+                                    <div className="min-w-0 flex-1 text-left">
+                                      <span className="text-xs sm:text-sm font-bold text-foreground block truncate">{item.name}</span>
+                                      <p className="text-[10px] text-slate-450 mt-0.5 capitalize">{item.category} • {formatDuration(item.duration)} • Qty: {item.quantity}</p>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-4">
-                                    <span className="text-sm font-bold text-foreground font-sans">₹{itemTotal}</span>
+                                  <div className="flex items-center gap-4 shrink-0">
+                                    <div className="text-right">
+                                      <span className="text-sm font-bold text-foreground font-sans block">₹{itemBasePrice}</span>
+                                      {addonTotal > 0 && (
+                                        <span className="text-[10px] font-semibold text-accent-lux font-sans block">+₹{addonTotal} addons</span>
+                                      )}
+                                    </div>
                                     <button
                                       onClick={() => removeFromCart(item.id)}
-                                      className="text-slate-400 hover:text-red-500 cursor-pointer p-1 rounded-full hover:bg-red-500/5 transition-colors"
+                                      className="text-slate-400 hover:text-red-500 cursor-pointer p-1.5 rounded-xl hover:bg-red-500/10 transition-colors"
                                       title="Remove service"
                                     >
                                       <Trash2 className="w-4 h-4" />
                                     </button>
                                   </div>
                                 </div>
-
-                                {item.selectedAddons && item.selectedAddons.length > 0 && (
-                                  <div className="pt-2.5 border-t border-slate-200/60 dark:border-slate-800 space-y-2">
-                                    <span className="text-[10px] uppercase font-bold text-accent-lux flex items-center gap-1">
-                                      <Sparkles className="w-3 h-3 animate-pulse" /> Included Add-ons ({item.selectedAddons.length})
-                                    </span>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                      {item.selectedAddons.map((addon) => (
-                                        <div key={addon.addonId} className="flex justify-between items-center text-xs bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 px-3 py-2 rounded-xl">
-                                          <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5 truncate pr-2">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-accent-lux shrink-0" />
-                                            <span className="truncate">{addon.addonName} {addon.quantity > 1 ? `(x${addon.quantity})` : ""}</span>
-                                          </span>
-                                          <div className="flex items-center gap-2 shrink-0">
-                                            <span className="font-bold text-foreground font-sans">+₹{addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1))}</span>
-                                            <button
-                                              onClick={() => toggleAddonInCart(item.itemId || item.id, addon.addonId, "remove")}
-                                              className="text-slate-400 hover:text-rose-500 cursor-pointer p-0.5"
-                                              title="Remove add-on"
-                                            >
-                                              <X className="w-3.5 h-3.5" />
-                                            </button>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
                               </div>
                             );
                           })
                         )}
                       </div>
 
-                      {/* Add-on Recommendation Cards (Package Addons) */}
-                      {cart.length > 0 && cartPackageAddons.length > 0 && (
-                        <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80">
-                          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5 mb-3">
-                            <Sparkles className="w-3.5 h-3.5 text-accent-lux animate-pulse" /> Popular Pairing Recommendations
-                          </span>
+                      {/* ADDED ADD-ONS SECTION - Shown Below Packages */}
+                      {(() => {
+                        const allAddedAddons = cart.flatMap((item) =>
+                          (item.selectedAddons || []).map((addon) => ({
+                            ...addon,
+                            parentItemId: item.itemId || item.id,
+                            parentItemName: item.name,
+                          }))
+                        );
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        if (allAddedAddons.length === 0) return null;
+
+                        const addonGrandTotal = allAddedAddons.reduce(
+                          (sum, a) => sum + (a.totalPrice || ((a.price || 0) * (a.quantity || 1))),
+                          0
+                        );
+
+                        return (
+                          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3 text-left">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] uppercase font-bold text-accent-lux tracking-wider flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-accent-lux animate-pulse" /> Included Add-ons ({allAddedAddons.length})
+                              </span>
+                              <span className="text-xs font-bold text-slate-500 font-sans">
+                                Total: +₹{addonGrandTotal}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
+                              {allAddedAddons.map((addon) => (
+                                <div
+                                  key={`${addon.parentItemId}-${addon.addonId}`}
+                                  className="p-2 sm:p-2.5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl flex items-center justify-between gap-2.5 shadow-2xs hover:border-accent-lux/30 transition-all"
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <CartAddonImage
+                                      src={addon.imageUrl || addon.image}
+                                      name={addon.addonName}
+                                      addonId={addon.addonId}
+                                      className="w-9 h-9 rounded-lg"
+                                    />
+                                    <div className="min-w-0 flex-1 text-left">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-xs font-bold text-foreground block truncate">
+                                          {addon.addonName} {addon.quantity > 1 ? `(x${addon.quantity})` : ""}
+                                        </span>
+                                        <span className="text-xs font-extrabold text-accent-lux font-sans shrink-0">
+                                          +₹{addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1))}
+                                        </span>
+                                      </div>
+                                      <p className="text-[10px] text-slate-400 truncate">
+                                        For: <span className="font-semibold text-slate-600 dark:text-slate-300">{addon.parentItemName}</span>
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    onClick={() => toggleAddonInCart(addon.parentItemId, addon.addonId, "remove")}
+                                    className="text-slate-400 hover:text-rose-500 cursor-pointer p-1 rounded-lg hover:bg-rose-500/10 transition-colors shrink-0"
+                                    title="Remove add-on"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* AVAILABLE ADD-ONS SECTION - Shown Below Everything */}
+                      {cart.length > 0 && cartPackageAddons.length > 0 && (
+                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2 text-left">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-accent-lux animate-pulse" /> Popular Pairing Recommendations
+                            </span>
+                            <span className="text-[10px] font-semibold text-slate-400">Available Add-ons</span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
                             {cartPackageAddons.map((addon) => {
-                              const parentCartItem = cart.find((c) => c.id !== addon.id);
-                              const targetCartItemId = parentCartItem?.itemId || parentCartItem?.id || addon.id;
-                              const isAdded = (parentCartItem?.selectedAddons || []).some((a) => a.addonId === addon.id) || cart.some((c) => c.id === addon.id);
+                              const targetCartItem = cart.find(
+                                (c) => String(c.id) === String(addon.packageId) ||
+                                       String(c.itemId) === String(addon.packageId) ||
+                                       String(c.packageId) === String(addon.packageId) ||
+                                       (addon.packageId && (String(c.id).includes(addon.packageId) || String(c.itemId).includes(addon.packageId))) ||
+                                       (addon.packageName && c.name.toLowerCase() === addon.packageName.toLowerCase())
+                              ) || cart[0];
+                              const targetCartItemId = targetCartItem?.itemId || targetCartItem?.id || addon.packageId || addon.id;
+                              const isAdded = (targetCartItem?.selectedAddons || []).some((a) => a.addonId === addon.id);
 
                               return (
                                 <div
-                                  key={addon.id}
-                                  className="p-4 bg-white dark:bg-slate-950/20 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md rounded-2xl text-left transition-all flex flex-col justify-between h-auto group"
+                                  key={`${addon.packageId || 'pkg'}-${addon.id}`}
+                                  className="p-2 sm:p-2.5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs hover:shadow-xs rounded-xl text-left transition-all flex items-center justify-between gap-2.5 group hover:border-accent-lux/40"
                                 >
-                                  <div>
-                                    <div className="flex justify-between items-start">
-                                      <span className="text-xs font-bold text-foreground group-hover:text-accent-lux transition-colors">
-                                        {addon.name}
-                                      </span>
-                                      <span className="text-xs font-black text-accent-lux shrink-0">
-                                        +₹{addon.price}
-                                      </span>
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <CartAddonImage
+                                      src={addon.imageUrl}
+                                      name={addon.name}
+                                      addonId={addon.id}
+                                      className="w-9 h-9 rounded-lg"
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-xs font-bold text-foreground group-hover:text-accent-lux transition-colors truncate">
+                                          {addon.name}
+                                        </span>
+                                        <span className="text-xs font-extrabold text-accent-lux font-sans shrink-0">
+                                          +₹{addon.price}
+                                        </span>
+                                      </div>
+                                      {addon.packageName && cart.length > 1 && (
+                                        <span className="text-[10px] text-slate-400 font-medium block truncate">
+                                          For: {addon.packageName}
+                                        </span>
+                                      )}
+                                      {addon.description && (
+                                        <p className="text-[10px] text-slate-400 line-clamp-1">
+                                          {addon.description}
+                                        </p>
+                                      )}
                                     </div>
-                                    {addon.description && (
-                                      <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">
-                                        {addon.description}
-                                      </p>
-                                    )}
                                   </div>
 
-                                  <div className="flex justify-end items-center mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/60">
-                                    <button
-                                      onClick={async () => {
-                                        const action = isAdded ? "remove" : "add";
-                                        await toggleAddonInCart(targetCartItemId, addon.id, action, { addonName: addon.name, price: addon.price });
-                                        addNotification(
-                                          action === "add" ? "Add-on Added" : "Add-on Removed",
-                                          action === "add" ? `"${addon.name}" added to your cart.` : `"${addon.name}" removed from your cart.`,
-                                          "info"
-                                        );
-                                      }}
-                                      className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer ${isAdded
-                                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-450 border border-emerald-500 opacity-90"
-                                          : "bg-accent-lux text-white hover:bg-accent-lux/90"
-                                        }`}
-                                    >
-                                      {isAdded ? "Added ✓" : <>Add <Plus className="w-3 h-3" /></>}
-                                    </button>
-                                  </div>
+                                  <button
+                                    onClick={async () => {
+                                      const action = isAdded ? "remove" : "add";
+                                      await toggleAddonInCart(targetCartItemId, addon.id, action, {
+                                        addonName: addon.name,
+                                        price: addon.price,
+                                        imageUrl: addon.imageUrl,
+                                      });
+                                      addNotification(
+                                        action === "add" ? "Add-on Added" : "Add-on Removed",
+                                        action === "add" ? `"${addon.name}" added to your cart.` : `"${addon.name}" removed from your cart.`,
+                                        "info"
+                                      );
+                                    }}
+                                    className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                      isAdded
+                                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-450 border border-emerald-500 opacity-90"
+                                        : "bg-accent-lux text-white hover:bg-accent-lux/90"
+                                    }`}
+                                  >
+                                    {isAdded ? "Added ✓" : <>Add <Plus className="w-3 h-3" /></>}
+                                  </button>
                                 </div>
                               );
                             })}
@@ -749,7 +930,6 @@ function BookingContent() {
                             <h2 className="text-xl font-extrabold text-foreground tracking-tight flex items-center gap-2">
                               <Calendar className="w-5 h-5 text-accent-lux" /> Schedule Arrival Slot
                             </h2>
-                            <p className="text-xs text-slate-450 mt-1">Select your preferred date & 1-hour arrival window for service.</p>
                           </div>
 
                           {/* Selected Slot Quick Badge */}
@@ -759,7 +939,7 @@ function BookingContent() {
                               <div className="text-left">
                                 <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400 block leading-tight">Selected Arrival</span>
                                 <span className="text-xs font-black text-foreground">
-                                  {selectedDate} @ {selectedTimeSlot}
+                                  {formatScheduleDateTime(selectedDate, selectedTimeSlot)}
                                 </span>
                               </div>
                             </div>
@@ -797,11 +977,6 @@ function BookingContent() {
                                       : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer"
                                     }`}
                                 >
-                                  {isSelected && (
-                                    <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                                      <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
-                                    </span>
-                                  )}
                                   <span className="text-[9px] font-bold uppercase tracking-wider opacity-85">{d.label}</span>
                                   <span className="text-sm font-extrabold my-0.5">{d.dayNum}</span>
                                 </button>
@@ -827,17 +1002,12 @@ function BookingContent() {
                                     : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
                                   }`}
                               >
-                                {(isCustomDateActive || showCustomDate) && (
-                                  <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                                    <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
-                                  </span>
-                                )}
                                 <div className="flex items-center gap-1">
                                   <Calendar className="w-3.5 h-3.5 text-current" />
                                   <span className="text-[9px] font-bold uppercase tracking-wider">Custom</span>
                                 </div>
                                 <span className="text-[10px] font-extrabold mt-1 truncate max-w-full">
-                                  {isCustomDateActive && selectedDate ? selectedDate : "Calendar"}
+                                  {isCustomDateActive && selectedDate ? formatDDMMYYYY(selectedDate) : "Calendar"}
                                 </span>
                               </button>
 
@@ -896,11 +1066,6 @@ function BookingContent() {
                                       : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer"
                                     }`}
                                 >
-                                  {isSelected && (
-                                    <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                                      <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
-                                    </span>
-                                  )}
                                   {slot}
                                 </button>
                               );
@@ -925,11 +1090,6 @@ function BookingContent() {
                                     : "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-[#782860]/40 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
                                   }`}
                               >
-                                {(isCustomTimeActive || showCustomTime) && (
-                                  <span className="absolute -top-1 -right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-md">
-                                    <CheckCircle className="w-3 h-3 fill-emerald-500 text-white" />
-                                  </span>
-                                )}
                                 <Clock className="w-3.5 h-3.5 text-current shrink-0" />
                                 <span className="text-xs font-bold truncate">
                                   {isCustomTimeActive && selectedTimeSlot ? selectedTimeSlot : "Custom"}
@@ -961,28 +1121,6 @@ function BookingContent() {
                           </div>
                         </div>
 
-                        {/* IMPORTANT AVAILABILITY NOTE BANNER */}
-                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 bg-amber-50/60 dark:bg-amber-950/20 p-3 rounded-xl border border-amber-200/70 dark:border-amber-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-left">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                              <Info className="w-3.5 h-3.5" />
-                            </div>
-                            <div>
-                              <h4 className="text-[11px] font-black text-amber-950 dark:text-amber-200 uppercase tracking-wider flex items-center gap-1.5">
-                                Real-Time Arrival Window
-                              </h4>
-                              <p className="text-[11px] text-amber-900/90 dark:text-amber-300/80 mt-0.5 leading-relaxed">
-                                Arrival time slots update dynamically based on real-time specialist availability in your area.
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                            <span className="px-2.5 py-0.5 bg-amber-500/10 text-amber-800 dark:text-amber-300 font-extrabold text-[10px] rounded-lg flex items-center gap-1 border border-amber-500/20">
-                              <Sparkles className="w-3 h-3 text-amber-500" /> Live Scheduling
-                            </span>
-                          </div>
-                        </div>
                       </div>
                     );
                   })()}
@@ -1030,18 +1168,11 @@ function BookingContent() {
                       ) : (
                         <>
                           {/* Section Header */}
-                          <div className="border-b border-slate-100 dark:border-slate-800 pb-5 flex items-center justify-between gap-4">
+                          <div className="border-b border-slate-100 dark:border-slate-800 pb-4 flex items-center justify-between gap-4">
                             <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="px-2.5 py-0.5 rounded-full bg-[#782860]/10 text-[#782860] dark:bg-[#782860]/20 dark:text-purple-300 text-[10px] font-black tracking-wider uppercase">
-                                  Step 3 of 4
-                                </span>
-                                <span className="text-xs text-slate-400 font-medium">• Service Location</span>
-                              </div>
-                              <h2 className="text-xl sm:text-2xl font-black text-foreground tracking-tight flex items-center gap-2.5">
+                              <h2 className="text-xl font-extrabold text-foreground tracking-tight flex items-center gap-2.5">
                                 <MapPin className="w-6 h-6 text-[#782860]" /> Select Service Location
                               </h2>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Specify where our verified professional team will arrive to deliver service.</p>
                             </div>
 
                             <button
@@ -1112,7 +1243,7 @@ function BookingContent() {
                                   <div className="flex items-start gap-3.5">
                                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-1 transition-all ${isSelected ? "border-[#782860] bg-[#782860]" : "border-slate-300 dark:border-slate-700"
                                       }`}>
-                                      {isSelected && <div className="w-2 h-2 bg-white rounded-full" />}
+                                      {isSelected && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
                                     </div>
                                     <div className="space-y-1.5 text-left">
                                       <div className="flex flex-wrap items-center gap-1.5">
@@ -1192,11 +1323,10 @@ function BookingContent() {
                   {/* STEP 3: Secure Payment details */}
                   {step === 3 && (
                     <div className="space-y-6">
-                      <div>
+                      <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
                         <h2 className="text-xl font-extrabold text-foreground tracking-tight flex items-center gap-2">
                           <CreditCard className="w-5 h-5 text-accent-lux" /> Complete Secure Checkout
                         </h2>
-                        <p className="text-xs text-slate-450 mt-1">Select authorization method. No amount will be debited until work is done.</p>
                       </div>
 
                       {/* Payment Options List */}
@@ -1297,7 +1427,7 @@ function BookingContent() {
                         </div>
 
                         <div className="space-y-2 text-xs text-slate-650 dark:text-slate-350">
-                          <p><strong>Scheduled Date:</strong> {selectedDate}</p>
+                          <p><strong>Scheduled Date:</strong> {formatDDMMYYYY(selectedDate)}</p>
                           <p><strong>Arrival Window:</strong> {selectedTimeSlot}</p>
                           <p><strong>Total Authorized:</strong> ₹{total}</p>
                         </div>

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowRight, ChevronDown, ChevronUp, Layers } from "lucide-react";
 import { motion, AnimatePresence, Variants } from "framer-motion";
 import { formatImageUrl, getNameInitials } from "@/utils/image";
+import { startTopLoader } from "@/utils/loader";
 import {
   fetchCustomerCategoriesApi,
   CategoryItem,
@@ -60,6 +61,7 @@ export default function Categories() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [categoriesList, setCategoriesList] = useState<UnifiedCategory[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+  const [navigatingCatId, setNavigatingCatId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadCategories() {
@@ -100,6 +102,8 @@ export default function Categories() {
   const handleCategoryClick = (cat: UnifiedCategory) => {
     const categorySlug = cat.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-");
     const catId = cat._id || cat.id;
+    setNavigatingCatId(catId);
+    startTopLoader();
     router.push(`/services/${categorySlug}?categoryId=${encodeURIComponent(catId)}`);
   };
 
@@ -153,34 +157,55 @@ export default function Categories() {
           className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5 sm:gap-4"
         >
           <AnimatePresence mode="popLayout">
-            {visibleCategories.map((cat) => (
-              <motion.div
-                key={cat._id || cat.id}
-                variants={itemVariants}
-                initial="hidden"
-                animate="show"
-                exit="hidden"
-                layout
-                onClick={() => handleCategoryClick(cat)}
-                className="bg-white dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 hover:border-accent-lux/50 dark:hover:border-accent-lux/50 rounded-2xl p-3.5 flex items-center gap-3 hover:shadow-md transition-all duration-300 group cursor-pointer relative select-none"
-              >
-                {/* Small Icon Badge */}
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-purple-50 dark:bg-purple-950/50 border border-purple-100/60 dark:border-purple-900/40 flex items-center justify-center p-2 shrink-0 group-hover:scale-105 group-hover:bg-purple-100/80 transition-all text-accent-lux">
-                  <CategoryImageDisplay iconUrl={cat.iconUrl} name={cat.name} id={cat.id} />
-                </div>
+            {visibleCategories.map((cat) => {
+              const catId = cat._id || cat.id;
+              const isNavigating = navigatingCatId === catId;
+              return (
+                <motion.div
+                  key={catId}
+                  variants={itemVariants}
+                  initial="hidden"
+                  animate="show"
+                  exit="hidden"
+                  layout
+                  onClick={() => handleCategoryClick(cat)}
+                  className={`bg-white dark:bg-slate-900/80 border rounded-2xl p-3.5 flex items-center gap-3 transition-all duration-300 group cursor-pointer relative select-none overflow-hidden ${
+                    isNavigating
+                      ? "border-accent-lux ring-2 ring-accent-lux/40 shadow-lg scale-[1.02] bg-purple-50/40 dark:bg-purple-950/40 animate-pulse"
+                      : "border-slate-200/80 dark:border-slate-800 hover:border-accent-lux/50 dark:hover:border-accent-lux/50 hover:shadow-md"
+                  }`}
+                >
+                  {/* Subtle Shimmer highlight on click */}
+                  {isNavigating && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-purple-300/30 dark:via-purple-500/20 to-transparent animate-shimmer pointer-events-none" />
+                  )}
 
-                {/* Title & Micro Arrow */}
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-bold text-xs sm:text-[13px] text-slate-800 dark:text-slate-100 leading-tight truncate group-hover:text-accent-lux transition-colors">
-                    {cat.name}
-                  </h3>
-                  <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500 font-semibold mt-0.5">
-                    <span>Explore</span>
-                    <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:text-accent-lux transition-transform" />
+                  {/* Small Icon Badge */}
+                  <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl border flex items-center justify-center p-2 shrink-0 transition-all text-accent-lux ${
+                    isNavigating
+                      ? "bg-purple-100 dark:bg-purple-900/60 border-accent-lux scale-105"
+                      : "bg-purple-50 dark:bg-purple-950/50 border-purple-100/60 dark:border-purple-900/40 group-hover:scale-105 group-hover:bg-purple-100/80"
+                  }`}>
+                    <CategoryImageDisplay iconUrl={cat.iconUrl} name={cat.name} id={cat.id} />
                   </div>
-                </div>
-              </motion.div>
-            ))}
+
+                  {/* Title & Micro Arrow */}
+                  <div className="min-w-0 flex-1">
+                    <h3 className={`font-bold text-xs sm:text-[13px] leading-tight truncate transition-colors ${
+                      isNavigating ? "text-accent-lux font-black" : "text-slate-800 dark:text-slate-100 group-hover:text-accent-lux"
+                    }`}>
+                      {cat.name}
+                    </h3>
+                    <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500 font-semibold mt-0.5">
+                      <span>{isNavigating ? "Loading..." : "Explore"}</span>
+                      <ArrowRight className={`w-3 h-3 transition-transform ${
+                        isNavigating ? "translate-x-1 text-accent-lux" : "group-hover:translate-x-0.5 group-hover:text-accent-lux"
+                      }`} />
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
           </AnimatePresence>
         </motion.div>
       )}

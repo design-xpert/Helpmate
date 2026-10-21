@@ -542,13 +542,17 @@ function SearchPageContent() {
     );
     if (isAlreadyInCart) return;
 
+    const pkgImg = pkg.imageUrl || pkg.thumbnailUrl;
     addToCart({
       id: pkg.id,
       itemId: pkg.id,
+      packageId: pkg.id,
       category: item.category?.name || "Service",
       name: pkg.name,
       price: pkg.price,
       duration: pkg.duration || 60,
+      image: pkgImg,
+      imageUrl: pkgImg,
       selectedAddons: (item.addons || []).map((a) => ({
         addonId: a._id,
         addonName: a.addonName,
@@ -568,13 +572,17 @@ function SearchPageContent() {
     );
 
     if (!isAlreadyInCart) {
+      const pkgImg = pkg.imageUrl || pkg.thumbnailUrl;
       addToCart({
         id: pkg.id,
         itemId: pkg.id,
+        packageId: pkg.id,
         category: item.category?.name || "Service",
         name: pkg.name,
         price: pkg.price,
         duration: pkg.duration || 60,
+        image: pkgImg,
+        imageUrl: pkgImg,
         selectedAddons: (item.addons || []).map((a) => ({
           addonId: a._id,
           addonName: a.addonName,
@@ -592,6 +600,7 @@ function SearchPageContent() {
   const handleCategoryClick = (cat: CategoryItem) => {
     const categorySlug = cat.categoryName.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-");
     const catId = cat._id;
+    startTopLoader();
     router.push(`/services/${categorySlug}?categoryId=${encodeURIComponent(catId)}`);
   };
 

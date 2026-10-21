@@ -144,6 +144,8 @@ export default function Reviews() {
         price: foundService.price,
         category: foundService.category,
         duration: foundService.duration,
+        image: foundService.image,
+        imageUrl: foundService.image,
       });
     }
 

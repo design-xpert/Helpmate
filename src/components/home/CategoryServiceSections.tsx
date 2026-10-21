@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, ArrowLeft } from "lucide-react";
 import { formatImageUrl, getNameInitials } from "@/utils/image";
+import { startTopLoader } from "@/utils/loader";
 import { fetchQuickServiceSectionsApi } from "@/services/quickServiceSectionsApi";
 
 export interface SimpleServiceCard {
@@ -108,6 +109,7 @@ function SectionRow({ section }: { section: CategorySectionData }) {
 
         <Link
           href={section.seeAllUrl}
+          onClick={() => startTopLoader()}
           className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-lux hover:underline shrink-0 cursor-pointer"
         >
           View all {section.title.toLowerCase()} <ArrowRight className="w-4 h-4" />
@@ -124,7 +126,10 @@ function SectionRow({ section }: { section: CategorySectionData }) {
           {section.services.map((service) => (
             <div
               key={service.id}
-              onClick={() => router.push(service.targetUrl)}
+              onClick={() => {
+                startTopLoader();
+                router.push(service.targetUrl);
+              }}
               className="group w-[155px] sm:w-[195px] md:w-[225px] shrink-0 cursor-pointer select-none text-left snap-start"
             >
               {/* Image Container with HelpMate Border Hover & Glow */}
