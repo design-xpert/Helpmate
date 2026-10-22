@@ -41,6 +41,8 @@ import GlobalTopLoader from "@/components/common/GlobalTopLoader";
 
 import ToastContainer from "@/components/common/ToastContainer";
 
+import PromoModal from "@/components/home/PromoModal";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -69,6 +71,7 @@ export default function RootLayout({
         </Suspense>
         <Providers>
           <CursorGlow />
+          <PromoModal />
           {children}
           {/* <FloatingHelp /> */}
           <ScrollToTop />

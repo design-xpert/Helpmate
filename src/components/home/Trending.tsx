@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Star, Heart, Clock, ArrowRight } from "lucide-react";
+import { Star, Heart, Clock, ArrowRight, ShoppingBag } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/store/useStore";
 import { fetchCustomerTrendingApi, TrendingPackageItem } from "@/services/trendingApi";
@@ -290,13 +290,32 @@ export default function Trending() {
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={(e) => handleBookNow(e, service)}
-                          className="inline-flex items-center gap-1 bg-accent-lux hover:bg-accent-lux/95 text-white font-extrabold text-[10px] px-4 py-2 rounded-full shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer z-10 relative"
-                        >
-                          Book Now <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
+                        {(() => {
+                          const isInCart = cart.some(
+                            (c) => String(c.id) === String(service.id) || String(c.itemId) === String(service.id)
+                          );
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => handleBookNow(e, service)}
+                              className={`inline-flex items-center gap-1 font-extrabold text-[10px] px-4 py-2 rounded-full shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer z-10 relative ${
+                                isInCart
+                                  ? "bg-accent-lux/10 border border-accent-lux text-accent-lux hover:bg-accent-lux hover:text-white"
+                                  : "bg-accent-lux hover:bg-accent-lux/95 text-white"
+                              }`}
+                            >
+                              {isInCart ? (
+                                <>
+                                  <ShoppingBag className="w-3 h-3" /> Go to Cart
+                                </>
+                              ) : (
+                                <>
+                                  Book Now <ArrowRight className="w-3.5 h-3.5" />
+                                </>
+                              )}
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   </Link>

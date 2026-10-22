@@ -715,18 +715,7 @@ function BookingContent() {
                             <div className="pt-2">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (typeof window !== "undefined") {
-                                    const isHome = window.location.pathname === "/";
-                                    const categoriesEl = document.getElementById("categories");
-                                    if (isHome && categoriesEl) {
-                                      categoriesEl.scrollIntoView({ behavior: "smooth" });
-                                      window.history.replaceState(null, "", "/#categories");
-                                      return;
-                                    }
-                                  }
-                                  router.push("/#categories");
-                                }}
+                                onClick={() => router.push("/search?view=categories")}
                                 className="inline-flex items-center justify-center px-6 py-3 rounded-full bg-accent-lux hover:bg-accent-lux/95 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-accent-lux/25 transition-all cursor-pointer"
                               >
                                 + Add Services

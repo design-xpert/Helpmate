@@ -1,7 +1,6 @@
 "use client";
 
 import Header from "@/components/common/Header";
-import PromoModal from "@/components/home/PromoModal";
 import Hero from "@/components/home/Hero";
 import PricingCalculator from "@/components/home/PricingCalculator";
 import Categories from "@/components/home/Categories";
@@ -58,7 +57,6 @@ export default function Home() {
 
   return (
     <>
-      <PromoModal />
       <Header />
       
       <main 

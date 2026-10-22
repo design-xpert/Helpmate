@@ -15,8 +15,10 @@ import {
   XCircle,
   Award,
   Layers,
-  HeartHandshake
+  HeartHandshake,
+  ShoppingBag
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatImageUrl, getNameInitials } from "@/utils/image";
 import { formatDuration } from "@/utils/dateTime";
@@ -50,6 +52,7 @@ export default function PackageDetailModal({
   isBookmarked = false,
   onToggleBookmark,
 }: PackageDetailModalProps) {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [fullDetails, setFullDetails] = useState<CustomerPackageDetailsData | null>(null);
@@ -470,15 +473,27 @@ export default function PackageDetailModal({
               <div className="flex items-center gap-2.5 sm:gap-3">
                 <button
                   type="button"
-                  disabled={isAdded}
-                  onClick={(e) => onAddToCart(e, packageItem)}
-                  className={`px-4 sm:px-5 py-2.5 rounded-full font-bold text-xs sm:text-sm transition-all active:scale-95 border shadow-xs cursor-pointer ${
+                  onClick={(e) => {
+                    if (isAdded) {
+                      onClose();
+                      router.push("/booking");
+                      return;
+                    }
+                    onAddToCart(e, packageItem);
+                  }}
+                  className={`px-4 sm:px-5 py-2.5 rounded-full font-bold text-xs sm:text-sm transition-all active:scale-95 border shadow-xs cursor-pointer flex items-center gap-1.5 ${
                     isAdded
-                      ? "bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-450 opacity-90 cursor-not-allowed"
+                      ? "bg-accent-lux/10 border-accent-lux text-accent-lux hover:bg-accent-lux hover:text-white"
                       : "bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border-slate-300 dark:border-slate-700 text-foreground"
                   }`}
                 >
-                  {isAdded ? "Added ✓" : "Add to Cart"}
+                  {isAdded ? (
+                    <>
+                      <ShoppingBag className="w-3.5 h-3.5" /> Go to Cart
+                    </>
+                  ) : (
+                    "Add to Cart"
+                  )}
                 </button>
 
                 <button

@@ -1912,17 +1912,25 @@ function ServiceDetailPageContent({ params }: PageProps) {
                         const isMainAdded = cart.some(c => c.id === mainId || c.itemId === mainId || c.id === `${service.id}-${selectedSub}-${selectedAct}-${selectedItem?.id}`);
                         return (
                           <button
-                            disabled={isMainAdded}
                             onClick={(e) => {
-                              if (isMainAdded) return;
+                              if (isMainAdded) {
+                                router.push("/booking");
+                                return;
+                              }
                               handleAddToCart(e);
                             }}
-                            className={`w-full font-extrabold text-xs py-3.5 rounded-full shadow-sm flex items-center justify-center gap-1.5 transition-colors ${isMainAdded
-                              ? "bg-emerald-500/10 border border-emerald-500 text-emerald-600 dark:text-emerald-450 opacity-80 cursor-not-allowed"
-                              : "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-350 text-slate-850 dark:text-slate-200 cursor-pointer"
+                            className={`w-full font-extrabold text-xs py-3.5 rounded-full shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer ${isMainAdded
+                              ? "bg-accent-lux/10 border-2 border-accent-lux text-accent-lux hover:bg-accent-lux hover:text-white"
+                              : "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-350 text-slate-850 dark:text-slate-200"
                               }`}
                           >
-                            {isMainAdded ? "Added to Cart ✓" : "Add to Cart"}
+                            {isMainAdded ? (
+                              <span className="flex items-center gap-1.5 font-bold">
+                                <ShoppingBag className="w-4 h-4" /> Go to Cart <ChevronRight className="w-3.5 h-3.5" />
+                              </span>
+                            ) : (
+                              "Add to Cart"
+                            )}
                           </button>
                         );
                       })()}
@@ -2629,18 +2637,26 @@ function ServiceDetailPageContent({ params }: PageProps) {
                                             View Details ↗
                                           </button>
                                           <button
-                                            disabled={isAdded}
                                             onClick={(e) => {
-                                              if (isAdded) return;
                                               e.stopPropagation();
+                                              if (isAdded) {
+                                                router.push("/booking");
+                                                return;
+                                              }
                                               handleItemAddToCart(e, item);
                                             }}
-                                            className={`px-3 py-1.5 rounded-full font-bold text-[10px] transition-all border shadow-sm ${isAdded
-                                              ? "bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-450 opacity-80 cursor-not-allowed"
-                                              : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-850 dark:text-slate-200 hover:border-slate-350 cursor-pointer"
+                                            className={`px-3 py-1.5 rounded-full font-bold text-[10px] transition-all border shadow-sm cursor-pointer flex items-center gap-1 ${isAdded
+                                              ? "bg-accent-lux/10 border-accent-lux text-accent-lux hover:bg-accent-lux hover:text-white"
+                                              : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-850 dark:text-slate-200 hover:border-slate-350"
                                               }`}
                                           >
-                                            {isAdded ? "Added ✓" : "Add to Cart"}
+                                            {isAdded ? (
+                                              <>
+                                                <ShoppingBag className="w-3 h-3" /> Go to Cart
+                                              </>
+                                            ) : (
+                                              "Add to Cart"
+                                            )}
                                           </button>
                                           <button
                                             onClick={(e) => {
@@ -2912,18 +2928,26 @@ function ServiceDetailPageContent({ params }: PageProps) {
               );
               return (
                 <button
-                  disabled={isMainAdded}
                   onClick={(e) => {
-                    if (isMainAdded) return;
+                    if (isMainAdded) {
+                      router.push("/booking");
+                      return;
+                    }
                     handleAddToCart(e);
                   }}
-                  className={`border font-bold text-xs py-2.5 px-4 rounded-full flex items-center justify-center transition-colors shadow-sm ${
+                  className={`border font-bold text-xs py-2.5 px-4 rounded-full flex items-center justify-center transition-all shadow-sm cursor-pointer ${
                     isMainAdded
-                      ? "bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-450 opacity-90 cursor-not-allowed"
-                      : "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 border-slate-200/80 dark:border-slate-800 text-slate-850 dark:text-slate-200 cursor-pointer"
+                      ? "bg-accent-lux/10 border-accent-lux text-accent-lux hover:bg-accent-lux hover:text-white"
+                      : "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 border-slate-200/80 dark:border-slate-800 text-slate-850 dark:text-slate-200"
                   }`}
                 >
-                  {isMainAdded ? "Added ✓" : "Add to Cart"}
+                  {isMainAdded ? (
+                    <span className="flex items-center gap-1 font-bold">
+                      <ShoppingBag className="w-3.5 h-3.5" /> Go to Cart
+                    </span>
+                  ) : (
+                    "Add to Cart"
+                  )}
                 </button>
               );
             })()}
@@ -2946,40 +2970,62 @@ function ServiceDetailPageContent({ params }: PageProps) {
 
       {/* Sticky Bottom Actions Bar (for wizard layout on mobile screens) */}
       {!isStandaloneDetailsView && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200/40 dark:border-slate-800/60 py-3.5 px-6 flex items-center justify-between shadow-[0_-8px_30px_rgb(0,0,0,0.06)] lg:hidden">
-          <div className="flex flex-col text-left">
-            <span className="text-[9px] uppercase font-bold text-slate-455 tracking-wider">Booking Customizer</span>
-            <span className="text-xs font-normal text-foreground">
-              {hasSubCategories ? (
-                <>
-                  {!selectedSub && "Choose System/Type"}
-                  {selectedSub && !selectedAct && `${currentSub?.name} > Action`}
-                  {selectedSub && selectedAct && `${currentSub?.name} > ${currentAct?.name}`}
-                </>
-              ) : (
-                <>
-                  {!selectedAct && "Choose Service Action"}
-                  {selectedAct && `${currentAct?.name}`}
-                </>
-              )}
-            </span>
-          </div>
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200/40 dark:border-slate-800/60 py-3 px-4 sm:px-6 flex items-center justify-between shadow-[0_-8px_30px_rgb(0,0,0,0.12)] lg:hidden">
+          {cart.length > 0 ? (
+            <button
+              onClick={() => router.push("/booking")}
+              className="w-full bg-accent-lux hover:bg-accent-lux/95 active:scale-[0.99] text-white font-extrabold text-xs py-3 px-5 rounded-full shadow-lg flex items-center justify-between cursor-pointer transition-all"
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-white/25 flex items-center justify-center text-[10px] font-black">
+                  {cart.length}
+                </span>
+                <span>Go to Cart</span>
+              </div>
+              <div className="flex items-center gap-1.5 font-sans">
+                <span className="font-black text-sm">
+                  ₹{cartPricing ? cartPricing.grandTotal : cart.reduce((sum, item) => sum + (item.price * (item.quantity || 1)) + getItemAddonTotal(item), 0)}
+                </span>
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </button>
+          ) : (
+            <>
+              <div className="flex flex-col text-left">
+                <span className="text-[9px] uppercase font-bold text-slate-455 tracking-wider">Booking Customizer</span>
+                <span className="text-xs font-normal text-foreground">
+                  {hasSubCategories ? (
+                    <>
+                      {!selectedSub && "Choose System/Type"}
+                      {selectedSub && !selectedAct && `${currentSub?.name} > Action`}
+                      {selectedSub && selectedAct && `${currentSub?.name} > ${currentAct?.name}`}
+                    </>
+                  ) : (
+                    <>
+                      {!selectedAct && "Choose Service Action"}
+                      {selectedAct && `${currentAct?.name}`}
+                    </>
+                  )}
+                </span>
+              </div>
 
-          <div className="flex gap-2.5">
-            {!selectedAct ? (
-              <button
-                onClick={() => {
-                  const el = document.getElementById("booking-wizard-card");
-                  if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-                }}
-                className="bg-accent-lux hover:bg-accent-lux/95 text-white font-bold text-xs py-2.5 px-6 rounded-full shadow-md flex items-center justify-center gap-1.5 cursor-pointer transition-all animate-pulse-subtle font-sans"
-              >
-                Select Options
-              </button>
-            ) : (
-              <span className="text-xs font-semibold text-accent-lux font-sans">Select below</span>
-            )}
-          </div>
+              <div className="flex gap-2.5">
+                {!selectedAct ? (
+                  <button
+                    onClick={() => {
+                      const el = document.getElementById("booking-wizard-card");
+                      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }}
+                    className="bg-accent-lux hover:bg-accent-lux/95 text-white font-bold text-xs py-2.5 px-6 rounded-full shadow-md flex items-center justify-center gap-1.5 cursor-pointer transition-all animate-pulse-subtle font-sans"
+                  >
+                    Select Options
+                  </button>
+                ) : (
+                  <span className="text-xs font-semibold text-accent-lux font-sans">Select below</span>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 

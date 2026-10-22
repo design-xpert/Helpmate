@@ -1035,15 +1035,28 @@ function SearchPageContent() {
 
                             <div className="flex items-center gap-1.5 shrink-0">
                               <button
-                                onClick={(e) => handleAddToCart(e, item)}
-                                disabled={isCartAdded}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (isCartAdded) {
+                                    router.push("/booking");
+                                    return;
+                                  }
+                                  handleAddToCart(e, item);
+                                }}
                                 className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer ${
                                   isCartAdded
-                                    ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 cursor-not-allowed opacity-90"
+                                    ? "bg-accent-lux/10 text-accent-lux border border-accent-lux/40 hover:bg-accent-lux hover:text-white"
                                     : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
                                 }`}
                               >
-                                {isCartAdded ? "Added ✓" : "+ Cart"}
+                                {isCartAdded ? (
+                                  <>
+                                    <ShoppingBag className="w-3 h-3" /> Go to Cart
+                                  </>
+                                ) : (
+                                  "+ Cart"
+                                )}
                               </button>
 
                               <button
@@ -1259,16 +1272,25 @@ function SearchPageContent() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  if (isCartAdded) {
+                                    router.push("/booking");
+                                    return;
+                                  }
                                   handleAddToCart(e, item);
                                 }}
-                                disabled={isCartAdded}
                                 className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer ${
                                   isCartAdded
-                                    ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 cursor-not-allowed opacity-90"
+                                    ? "bg-accent-lux/10 text-accent-lux border border-accent-lux/40 hover:bg-accent-lux hover:text-white"
                                     : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
                                 }`}
                               >
-                                {isCartAdded ? "Added ✓" : "+ Cart"}
+                                {isCartAdded ? (
+                                  <>
+                                    <ShoppingBag className="w-3 h-3" /> Go to Cart
+                                  </>
+                                ) : (
+                                  "+ Cart"
+                                )}
                               </button>
 
                               <button
@@ -1744,14 +1766,27 @@ function SearchPageContent() {
                                   <div className="flex items-center gap-1.5 shrink-0">
                                     {/* Add to Cart Button */}
                                     <button
-                                      onClick={(e) => handleAddToCart(e, item)}
-                                      disabled={isCartAdded}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (isCartAdded) {
+                                          router.push("/booking");
+                                          return;
+                                        }
+                                        handleAddToCart(e, item);
+                                      }}
                                       className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer ${isCartAdded
-                                          ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 cursor-not-allowed opacity-90"
+                                          ? "bg-accent-lux/10 text-accent-lux border border-accent-lux/40 hover:bg-accent-lux hover:text-white"
                                           : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
                                         }`}
                                     >
-                                      {isCartAdded ? "Added ✓" : "+ Cart"}
+                                      {isCartAdded ? (
+                                        <>
+                                          <ShoppingBag className="w-3 h-3" /> Go to Cart
+                                        </>
+                                      ) : (
+                                        "+ Cart"
+                                      )}
                                     </button>
 
                                     {/* Book Now Button -> opens 4-step booking flow at /booking */}
