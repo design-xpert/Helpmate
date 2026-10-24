@@ -52,7 +52,51 @@ export async function sendCustomerSignupOtpApi(
 
 export interface LoginPayload {
   mobile: string;
-  password: string;
+  password?: string;
+  otp?: string;
+}
+
+export interface SendLoginOtpPayload {
+  mobile: string;
+}
+
+export interface SendLoginOtpResponse {
+  success: boolean;
+  message: string;
+  data?: any;
+}
+
+/**
+ * Send Customer Login OTP
+ * POST /api/customer/auth/send-login-otp
+ */
+export async function sendCustomerLoginOtpApi(
+  payload: SendLoginOtpPayload
+): Promise<SendLoginOtpResponse> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/customer/auth/send-login-otp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return {
+        success: false,
+        message: data.message || "Failed to send login OTP.",
+      };
+    }
+
+    return data;
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error?.message || "Network error. Unable to connect to server.",
+    };
+  }
 }
 
 export interface CustomerData {
