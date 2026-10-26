@@ -469,12 +469,12 @@ export default function CheckoutModal({
           );
 
           return (
-            <div className="px-8 pt-6 pb-2 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/30 dark:bg-slate-950/20">
+            <div className="px-3 sm:px-8 pt-5 sm:pt-6 pb-2 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/30 dark:bg-slate-950/20 w-full overflow-hidden">
               <div className="flex items-center justify-between relative max-w-lg mx-auto">
-                <div className="absolute left-[18px] right-[18px] top-[18px] h-0.5 bg-slate-200 dark:bg-slate-800 -translate-y-1/2 z-0" />
+                <div className="absolute left-[14px] sm:left-[18px] right-[14px] sm:right-[18px] top-[14px] sm:top-[18px] h-0.5 bg-slate-200 dark:bg-slate-800 -translate-y-1/2 z-0" />
                 <div
-                  className="absolute left-[18px] top-[18px] h-0.5 bg-accent-lux -translate-y-1/2 transition-all duration-500 z-0"
-                  style={{ width: `calc(${(activeProgressIndex / 3) * 100}% - ${(activeProgressIndex / 3) * 36}px)` }}
+                  className="absolute left-[14px] sm:left-[18px] top-[14px] sm:top-[18px] h-0.5 bg-accent-lux -translate-y-1/2 transition-all duration-500 z-0"
+                  style={{ width: `calc(${(activeProgressIndex / 3) * 100}% - ${(activeProgressIndex / 3) * 28}px)` }}
                 />
 
                 {[
@@ -496,7 +496,7 @@ export default function CheckoutModal({
                       title={`Go to ${s.label}`}
                     >
                       <div
-                        className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+                        className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
                           isCurrent
                             ? "bg-accent-lux border-accent-lux text-white scale-110 shadow-lg shadow-accent-lux/30 ring-4 ring-accent-lux/20 font-black"
                             : isCompleted
@@ -505,13 +505,13 @@ export default function CheckoutModal({
                         }`}
                       >
                         {isCompleted && !isCurrent ? (
-                          <Check className="w-4 h-4 stroke-[3]" />
+                          <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[3]" />
                         ) : (
-                          <Icon className="w-4 h-4" />
+                          <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         )}
                       </div>
                       <span
-                        className={`text-[9px] font-black uppercase tracking-wider mt-2 transition-colors duration-300 ${
+                        className={`text-[8px] sm:text-[9px] font-black uppercase tracking-wider mt-1.5 sm:mt-2 transition-colors duration-300 ${
                           isCurrent
                             ? "text-accent-lux font-black scale-105"
                             : isCompleted

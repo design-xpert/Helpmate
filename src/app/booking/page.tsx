@@ -447,7 +447,7 @@ function BookingContent() {
 
       <main 
         style={{ paddingTop: "var(--header-total-height, 8.5rem)" }}
-        className="flex-1 pt-32 sm:pt-36 font-sans bg-slate-50/50 dark:bg-background pb-28 lg:pb-20 relative min-h-screen"
+        className="flex-1 pt-32 sm:pt-36 font-sans bg-slate-50/50 dark:bg-background pb-28 lg:pb-20 relative min-h-screen w-full overflow-x-clip"
       >
         {/* Glow Effects */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -455,7 +455,7 @@ function BookingContent() {
           <div className="absolute bottom-48 right-1/4 translate-x-1/2 w-96 h-96 bg-accent-lux/[0.03] rounded-full blur-[140px]" />
         </div>
 
-        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 relative z-10 py-4 sm:py-6">
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 relative z-10 py-4 sm:py-6 w-full overflow-x-clip">
           {/* Header Action / Back */}
           {step < 4 && (
             <button
@@ -474,7 +474,7 @@ function BookingContent() {
             );
 
             return (
-              <div className="mb-8 sm:mb-10 max-w-3xl mx-auto">
+              <div className="mb-8 sm:mb-10 max-w-3xl mx-auto px-2 sm:px-4 w-full">
                 <div className="flex items-center justify-between relative">
                   {/* Connector line */}
                   <div className="absolute left-[14px] sm:left-[18px] right-[14px] sm:right-[18px] top-[14px] sm:top-[18px] h-0.5 bg-slate-200 dark:bg-slate-800 -translate-y-1/2 z-0" />
@@ -898,7 +898,7 @@ function BookingContent() {
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: 6, scale: 0.96 }}
                                     transition={{ duration: 0.18 }}
-                                    className="absolute top-full -right-2 sm:right-0 mt-2 z-50 shadow-2xl rounded-3xl max-w-[calc(100vw-2rem)]"
+                                    className="absolute top-full right-0 mt-2 z-50 shadow-2xl rounded-3xl max-w-[calc(100vw-2rem)]"
                                   >
                                     <InlineCustomDatePicker
                                       selectedDate={selectedDate}
@@ -983,7 +983,7 @@ function BookingContent() {
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: 6, scale: 0.96 }}
                                     transition={{ duration: 0.18 }}
-                                    className="absolute bottom-full -right-2 sm:right-0 mb-2 z-50 shadow-2xl rounded-3xl max-w-[calc(100vw-2rem)]"
+                                    className="absolute bottom-full right-0 mb-2 z-50 shadow-2xl rounded-3xl max-w-[calc(100vw-2rem)]"
                                   >
                                     <InlineCustomTimePicker
                                       selectedTime={selectedTimeSlot}

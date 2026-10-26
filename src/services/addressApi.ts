@@ -133,13 +133,15 @@ export async function deleteCustomerAddressApi(
   }
 }
 
-// 5. Fetch Localities
+// 5. Fetch Localities (with dynamic search support & all 200 localities pagination)
 export async function getLocalitiesApi(search?: string): Promise<AddressApiResponse<{ localities: BackendLocality[] }>> {
   try {
     const params = new URLSearchParams();
-    params.set("limit", "100");
     if (search && search.trim()) {
       params.set("search", search.trim());
+      params.set("limit", "100");
+    } else {
+      params.set("limit", "100");
     }
 
     const res = await fetch(`${API_BASE_URL}/api/locality?${params.toString()}`, {
@@ -150,6 +152,21 @@ export async function getLocalitiesApi(search?: string): Promise<AddressApiRespo
     });
     const json = await res.json();
     if (json && json.success) {
+      // If fetching full list without search, fetch page 2 as well so all 200 localities are loaded
+      if (!search && json.data?.pagination?.totalPages > 1) {
+        try {
+          const res2 = await fetch(`${API_BASE_URL}/api/locality?page=2&limit=100`, {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          });
+          const json2 = await res2.json();
+          if (json2?.success && Array.isArray(json2.data?.localities)) {
+            json.data.localities = [...json.data.localities, ...json2.data.localities];
+          }
+        } catch {
+          // Keep page 1 results on fallback
+        }
+      }
       return json;
     }
 

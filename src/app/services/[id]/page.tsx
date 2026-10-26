@@ -2006,14 +2006,14 @@ function ServiceDetailPageContent({ params }: PageProps) {
         /* ================= CATEGORY WIZARD VIEW ================= */
         <main 
           style={{ paddingTop: "var(--header-total-height, 8.5rem)" }}
-          className="flex-1 pt-32 sm:pt-36 pb-24 lg:pb-12 font-sans bg-slate-50/50 dark:bg-background relative"
+          className="flex-1 pt-32 sm:pt-36 pb-24 lg:pb-12 font-sans bg-slate-50/50 dark:bg-background relative w-full overflow-x-clip"
         >
           {/* Background glows */}
           <div className="absolute top-24 left-1/4 -translate-x-1/2 w-96 h-96 bg-accent-lux/5 rounded-full blur-[140px] pointer-events-none" />
           <div className="absolute bottom-48 right-1/4 translate-x-1/2 w-96 h-96 bg-accent-lux/[0.03] rounded-full blur-[140px] pointer-events-none" />
 
           {/* Banner Section */}
-          <section className="max-w-7xl mx-auto px-3.5 sm:px-6 py-4 sm:py-6 relative z-10">
+          <section className="max-w-7xl mx-auto px-3.5 sm:px-6 py-4 sm:py-6 relative z-10 w-full overflow-x-clip">
             {renderBreadcrumbs(false)}
 
             {/* Service Category Page Heading */}
@@ -2038,52 +2038,52 @@ function ServiceDetailPageContent({ params }: PageProps) {
               )}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start w-full">
 
               {/* Left Column - Stepper Wizard */}
-              <div className="lg:col-span-8 space-y-6">
-                <div id="booking-wizard-card" className="glass-panel p-3.5 sm:p-8 rounded-2xl sm:rounded-3xl border border-slate-200/10 space-y-6 text-left">
+              <div className="lg:col-span-8 space-y-6 w-full min-w-0">
+                <div id="booking-wizard-card" className="glass-panel p-3.5 sm:p-8 rounded-2xl sm:rounded-3xl border border-slate-200/10 space-y-6 text-left w-full overflow-hidden">
 
                   {/* Progress Tracker Stepper circles with labels & click to navigate */}
-                  <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
+                  <div className="border-b border-slate-100 dark:border-slate-800 pb-3 sm:pb-4 w-full overflow-hidden">
                     {loadingSubCategories ? (
-                      <div className="flex items-center gap-1.5 sm:gap-3 w-full font-sans animate-pulse">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
-                          <div className="hidden sm:block space-y-1">
-                            <div className="h-2 w-10 bg-slate-200 dark:bg-slate-800 rounded" />
-                            <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
+                      <div className="flex items-center gap-1 sm:gap-3 w-full font-sans animate-pulse">
+                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
+                          <div className="space-y-1">
+                            <div className="h-2 w-8 sm:w-10 bg-slate-200 dark:bg-slate-800 rounded" />
+                            <div className="h-2.5 w-10 sm:w-16 bg-slate-200 dark:bg-slate-800 rounded" />
                           </div>
                         </div>
-                        <div className="h-0.5 flex-1 bg-slate-200 dark:bg-slate-800" />
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
-                          <div className="hidden sm:block space-y-1">
-                            <div className="h-2 w-10 bg-slate-200 dark:bg-slate-800 rounded" />
-                            <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
+                        <div className="h-0.5 flex-1 min-w-[8px] sm:min-w-[16px] bg-slate-200 dark:bg-slate-800" />
+                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
+                          <div className="space-y-1">
+                            <div className="h-2 w-8 sm:w-10 bg-slate-200 dark:bg-slate-800 rounded" />
+                            <div className="h-2.5 w-10 sm:w-16 bg-slate-200 dark:bg-slate-800 rounded" />
                           </div>
                         </div>
-                        <div className="h-0.5 flex-1 bg-slate-200 dark:bg-slate-800" />
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
-                          <div className="hidden sm:block space-y-1">
-                            <div className="h-2 w-10 bg-slate-200 dark:bg-slate-800 rounded" />
-                            <div className="h-3 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
+                        <div className="h-0.5 flex-1 min-w-[8px] sm:min-w-[16px] bg-slate-200 dark:bg-slate-800" />
+                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
+                          <div className="space-y-1">
+                            <div className="h-2 w-8 sm:w-10 bg-slate-200 dark:bg-slate-800 rounded" />
+                            <div className="h-2.5 w-10 sm:w-16 bg-slate-200 dark:bg-slate-800 rounded" />
                           </div>
                         </div>
                       </div>
                     ) : hasSubCategories ? (
-                      <div className="flex items-center gap-1.5 sm:gap-3 w-full font-sans">
+                      <div className="flex items-center gap-1 sm:gap-3 w-full font-sans">
                         {/* Step 1: Type */}
                         <button
                           type="button"
                           onClick={() => setStepView("subcategory")}
-                          className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group text-left transition-all"
+                          className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group text-left transition-all min-w-0 shrink-0 max-w-[32%] sm:max-w-none"
                         >
                           <div
-                            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                            className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold shrink-0 transition-all ${
                               effectiveStepView === "subcategory"
-                                ? "bg-accent-lux text-white ring-4 ring-accent-lux/20 shadow-md"
+                                ? "bg-accent-lux text-white ring-2 sm:ring-4 ring-accent-lux/20 shadow-md"
                                 : selectedSub !== null
                                 ? "bg-emerald-500 text-white shadow-xs"
                                 : "bg-slate-100 dark:bg-slate-800 text-slate-400"
@@ -2091,15 +2091,25 @@ function ServiceDetailPageContent({ params }: PageProps) {
                           >
                             {selectedSub !== null && effectiveStepView !== "subcategory" ? "✓" : "1"}
                           </div>
-                          <div className="hidden sm:block">
-                            <span className="text-[9px] font-normal uppercase tracking-wider block text-slate-400">Step 1</span>
-                            <span className={`text-xs font-normal leading-tight block ${effectiveStepView === "subcategory" ? "text-accent-lux" : "text-slate-700 dark:text-slate-200"}`}>
-                              {currentSub?.name || "Service Type"}
+                          <div className="min-w-0">
+                            <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider block text-slate-400 leading-tight">
+                              Step 1
+                            </span>
+                            <span
+                              className={`text-[10px] sm:text-xs font-bold leading-tight block truncate ${
+                                effectiveStepView === "subcategory"
+                                  ? "text-accent-lux font-black"
+                                  : "text-slate-700 dark:text-slate-200"
+                              }`}
+                              title={currentSub?.name || "Service Type"}
+                            >
+                              <span className="sm:hidden">{currentSub?.name ? currentSub.name : "Type"}</span>
+                              <span className="hidden sm:inline">{currentSub?.name || "Service Type"}</span>
                             </span>
                           </div>
                         </button>
 
-                        <div className={`h-0.5 flex-1 transition-colors ${selectedSub !== null ? "bg-emerald-500/70" : "bg-slate-200 dark:bg-slate-800"}`} />
+                        <div className={`h-0.5 flex-1 min-w-[8px] sm:min-w-[16px] transition-colors ${selectedSub !== null ? "bg-emerald-500/70" : "bg-slate-200 dark:bg-slate-800"}`} />
 
                         {/* Step 2: Action */}
                         <button
@@ -2108,12 +2118,14 @@ function ServiceDetailPageContent({ params }: PageProps) {
                             if (selectedSub !== null) setStepView("action");
                           }}
                           disabled={selectedSub === null}
-                          className={`flex items-center gap-1.5 sm:gap-2 text-left transition-all ${selectedSub !== null ? "cursor-pointer group" : "cursor-not-allowed opacity-50"}`}
+                          className={`flex items-center gap-1.5 sm:gap-2 text-left transition-all min-w-0 shrink-0 max-w-[32%] sm:max-w-none ${
+                            selectedSub !== null ? "cursor-pointer group" : "cursor-not-allowed opacity-50"
+                          }`}
                         >
                           <div
-                            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                            className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold shrink-0 transition-all ${
                               effectiveStepView === "action"
-                                ? "bg-accent-lux text-white ring-4 ring-accent-lux/20 shadow-md"
+                                ? "bg-accent-lux text-white ring-2 sm:ring-4 ring-accent-lux/20 shadow-md"
                                 : selectedAct !== null
                                 ? "bg-emerald-500 text-white shadow-xs"
                                 : "bg-slate-100 dark:bg-slate-800 text-slate-400"
@@ -2121,15 +2133,25 @@ function ServiceDetailPageContent({ params }: PageProps) {
                           >
                             {selectedAct !== null && effectiveStepView === "packages" ? "✓" : "2"}
                           </div>
-                          <div className="hidden sm:block">
-                            <span className="text-[9px] font-normal uppercase tracking-wider block text-slate-400">Step 2</span>
-                            <span className={`text-xs font-normal leading-tight block ${effectiveStepView === "action" ? "text-accent-lux" : "text-slate-700 dark:text-slate-200"}`}>
-                              {currentAct?.name || "Action"}
+                          <div className="min-w-0">
+                            <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider block text-slate-400 leading-tight">
+                              Step 2
+                            </span>
+                            <span
+                              className={`text-[10px] sm:text-xs font-bold leading-tight block truncate ${
+                                effectiveStepView === "action"
+                                  ? "text-accent-lux font-black"
+                                  : "text-slate-700 dark:text-slate-200"
+                              }`}
+                              title={currentAct?.name || "Action"}
+                            >
+                              <span className="sm:hidden">{currentAct?.name ? currentAct.name : "Action"}</span>
+                              <span className="hidden sm:inline">{currentAct?.name || "Action"}</span>
                             </span>
                           </div>
                         </button>
 
-                        <div className={`h-0.5 flex-1 transition-colors ${selectedAct !== null ? "bg-emerald-500/70" : "bg-slate-200 dark:bg-slate-800"}`} />
+                        <div className={`h-0.5 flex-1 min-w-[8px] sm:min-w-[16px] transition-colors ${selectedAct !== null ? "bg-emerald-500/70" : "bg-slate-200 dark:bg-slate-800"}`} />
 
                         {/* Step 3: Packages */}
                         <button
@@ -2138,37 +2160,47 @@ function ServiceDetailPageContent({ params }: PageProps) {
                             if (selectedAct !== null) setStepView("packages");
                           }}
                           disabled={selectedAct === null}
-                          className={`flex items-center gap-1.5 sm:gap-2 text-left transition-all ${selectedAct !== null ? "cursor-pointer group" : "cursor-not-allowed opacity-50"}`}
+                          className={`flex items-center gap-1.5 sm:gap-2 text-left transition-all min-w-0 shrink-0 max-w-[32%] sm:max-w-none ${
+                            selectedAct !== null ? "cursor-pointer group" : "cursor-not-allowed opacity-50"
+                          }`}
                         >
                           <div
-                            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                            className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold shrink-0 transition-all ${
                               effectiveStepView === "packages"
-                                ? "bg-accent-lux text-white ring-4 ring-accent-lux/20 shadow-md"
+                                ? "bg-accent-lux text-white ring-2 sm:ring-4 ring-accent-lux/20 shadow-md"
                                 : "bg-slate-100 dark:bg-slate-800 text-slate-400"
                             }`}
                           >
                             3
                           </div>
-                          <div className="hidden sm:block">
-                            <span className="text-[9px] font-black uppercase tracking-wider block text-slate-400">Step 3</span>
-                            <span className={`text-xs font-bold leading-tight block ${effectiveStepView === "packages" ? "text-accent-lux" : "text-slate-700 dark:text-slate-200"}`}>
+                          <div className="min-w-0">
+                            <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider block text-slate-400 leading-tight">
+                              Step 3
+                            </span>
+                            <span
+                              className={`text-[10px] sm:text-xs font-bold leading-tight block truncate ${
+                                effectiveStepView === "packages"
+                                  ? "text-accent-lux font-black"
+                                  : "text-slate-700 dark:text-slate-200"
+                              }`}
+                            >
                               Packages
                             </span>
                           </div>
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5 sm:gap-3 w-full font-sans">
+                      <div className="flex items-center gap-1 sm:gap-3 w-full font-sans">
                         {/* Step 1: Action */}
                         <button
                           type="button"
                           onClick={() => setStepView("action")}
-                          className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group text-left transition-all"
+                          className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group text-left transition-all min-w-0 shrink-0 max-w-[46%] sm:max-w-none"
                         >
                           <div
-                            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                            className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold shrink-0 transition-all ${
                               effectiveStepView === "action"
-                                ? "bg-accent-lux text-white ring-4 ring-accent-lux/20 shadow-md"
+                                ? "bg-accent-lux text-white ring-2 sm:ring-4 ring-accent-lux/20 shadow-md"
                                 : selectedAct !== null
                                 ? "bg-emerald-500 text-white shadow-xs"
                                 : "bg-slate-100 dark:bg-slate-800 text-slate-400"
@@ -2176,15 +2208,25 @@ function ServiceDetailPageContent({ params }: PageProps) {
                           >
                             {selectedAct !== null && effectiveStepView === "packages" ? "✓" : "1"}
                           </div>
-                          <div className="hidden sm:block">
-                            <span className="text-[9px] font-black uppercase tracking-wider block text-slate-400">Step 1</span>
-                            <span className={`text-xs font-bold leading-tight block ${effectiveStepView === "action" ? "text-accent-lux" : "text-slate-700 dark:text-slate-200"}`}>
-                              {currentAct?.name || "Action"}
+                          <div className="min-w-0">
+                            <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider block text-slate-400 leading-tight">
+                              Step 1
+                            </span>
+                            <span
+                              className={`text-[10px] sm:text-xs font-bold leading-tight block truncate ${
+                                effectiveStepView === "action"
+                                  ? "text-accent-lux font-black"
+                                  : "text-slate-700 dark:text-slate-200"
+                              }`}
+                              title={currentAct?.name || "Action"}
+                            >
+                              <span className="sm:hidden">{currentAct?.name ? currentAct.name : "Action"}</span>
+                              <span className="hidden sm:inline">{currentAct?.name || "Action"}</span>
                             </span>
                           </div>
                         </button>
 
-                        <div className={`h-0.5 flex-1 transition-colors ${selectedAct !== null ? "bg-emerald-500/70" : "bg-slate-200 dark:bg-slate-800"}`} />
+                        <div className={`h-0.5 flex-1 min-w-[12px] sm:min-w-[16px] transition-colors ${selectedAct !== null ? "bg-emerald-500/70" : "bg-slate-200 dark:bg-slate-800"}`} />
 
                         {/* Step 2: Packages */}
                         <button
@@ -2193,20 +2235,30 @@ function ServiceDetailPageContent({ params }: PageProps) {
                             if (selectedAct !== null) setStepView("packages");
                           }}
                           disabled={selectedAct === null}
-                          className={`flex items-center gap-1.5 sm:gap-2 text-left transition-all ${selectedAct !== null ? "cursor-pointer group" : "cursor-not-allowed opacity-50"}`}
+                          className={`flex items-center gap-1.5 sm:gap-2 text-left transition-all min-w-0 shrink-0 max-w-[46%] sm:max-w-none ${
+                            selectedAct !== null ? "cursor-pointer group" : "cursor-not-allowed opacity-50"
+                          }`}
                         >
                           <div
-                            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                            className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold shrink-0 transition-all ${
                               effectiveStepView === "packages"
-                                ? "bg-accent-lux text-white ring-4 ring-accent-lux/20 shadow-md"
+                                ? "bg-accent-lux text-white ring-2 sm:ring-4 ring-accent-lux/20 shadow-md"
                                 : "bg-slate-100 dark:bg-slate-800 text-slate-400"
                             }`}
                           >
                             2
                           </div>
-                          <div className="hidden sm:block">
-                            <span className="text-[9px] font-black uppercase tracking-wider block text-slate-400">Step 2</span>
-                            <span className={`text-xs font-bold leading-tight block ${effectiveStepView === "packages" ? "text-accent-lux" : "text-slate-700 dark:text-slate-200"}`}>
+                          <div className="min-w-0">
+                            <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider block text-slate-400 leading-tight">
+                              Step 2
+                            </span>
+                            <span
+                              className={`text-[10px] sm:text-xs font-bold leading-tight block truncate ${
+                                effectiveStepView === "packages"
+                                  ? "text-accent-lux font-black"
+                                  : "text-slate-700 dark:text-slate-200"
+                              }`}
+                            >
                               Packages
                             </span>
                           </div>
@@ -2412,7 +2464,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
 
                         <div
                           style={{ top: "calc(var(--header-total-height, 8rem) + 0.5rem)" }}
-                          className="sticky z-20 py-2 sm:py-2.5 px-2.5 sm:px-3 -mx-1 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/60 shadow-xs flex items-center justify-between gap-1.5 sm:gap-2 transition-all flex-wrap sm:flex-nowrap"
+                          className="sticky z-20 py-2 sm:py-2.5 px-2.5 sm:px-3 mx-0 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/60 shadow-xs flex items-center justify-between gap-1.5 sm:gap-2 transition-all flex-wrap sm:flex-nowrap"
                         >
                           <span className="text-[9px] sm:text-[10px] uppercase font-bold text-slate-455 tracking-wider block shrink-0">
                             Available Packages

@@ -64,6 +64,7 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
   const [localitySearch, setLocalitySearch] = useState<string>("");
   const [isSearchingLocality, setIsSearchingLocality] = useState<boolean>(false);
   const localityDropdownRef = useRef<HTMLDivElement>(null);
+  const allLocalitiesRef = useRef<{ id: string; name: string; pincode: string }[]>([]);
 
   const [locality, setLocality] = useState<string>(initialData?.locality || "");
   const [localityId, setLocalityId] = useState<string>(initialData?.localityId || "");
@@ -94,6 +95,7 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
               pincode: loc.pincode || "",
             }));
 
+          allLocalitiesRef.current = mapped;
           setLocalities(mapped);
 
           if (mapped.length > 0) {
@@ -209,11 +211,21 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
   useEffect(() => {
     if (!isLocalityDropdownOpen) return;
 
+    const trimmed = localitySearch.trim();
+    if (!trimmed) {
+      if (allLocalitiesRef.current.length > 0) {
+        setLocalities(allLocalitiesRef.current);
+      }
+      setIsSearchingLocality(false);
+      return;
+    }
+
     let isCancelled = false;
+    setIsSearchingLocality(true);
+
     const timer = setTimeout(async () => {
       try {
-        setIsSearchingLocality(true);
-        const res = await getLocalitiesApi(localitySearch.trim());
+        const res = await getLocalitiesApi(trimmed);
         if (isCancelled) return;
 
         if (res && res.success) {
@@ -254,6 +266,9 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
     }
     setIsLocalityDropdownOpen(false);
     setLocalitySearch("");
+    if (allLocalitiesRef.current.length > 0) {
+      setLocalities(allLocalitiesRef.current);
+    }
   };
 
   const filteredLocalities = localities.filter((loc) => {
@@ -413,7 +428,10 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
                       type="text"
                       value={localitySearch}
                       onChange={(e) => setLocalitySearch(e.target.value)}
-                      placeholder="Search locality..."
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.preventDefault();
+                      }}
+                      placeholder="Search locality name or pincode..."
                       className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 pl-8 pr-7 py-1.5 rounded-xl text-xs text-foreground placeholder:text-slate-400 focus:outline-none focus:border-[#782860]"
                       autoFocus
                     />
@@ -422,7 +440,12 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
                     ) : localitySearch ? (
                       <button
                         type="button"
-                        onClick={() => setLocalitySearch("")}
+                        onClick={() => {
+                          setLocalitySearch("");
+                          if (allLocalitiesRef.current.length > 0) {
+                            setLocalities(allLocalitiesRef.current);
+                          }
+                        }}
                         className="absolute right-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                       >
                         <X className="w-3 h-3" />
@@ -433,14 +456,14 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
 
                 {/* Localities List */}
                 <div className="max-h-52 overflow-y-auto p-1.5 space-y-0.5">
-                  {isSearchingLocality ? (
+                  {isSearchingLocality && filteredLocalities.length === 0 ? (
                     <div className="py-6 flex flex-col items-center justify-center gap-1.5 text-xs text-slate-400">
                       <Loader2 className="w-4 h-4 text-[#782860] animate-spin" />
                       <span>Searching localities...</span>
                     </div>
                   ) : filteredLocalities.length === 0 ? (
                     <div className="py-4 text-center text-xs text-slate-400">
-                      No matching locality found
+                      {localitySearch ? `No locality found matching "${localitySearch}"` : "No matching locality found"}
                     </div>
                   ) : (
                     filteredLocalities.map((loc) => {
