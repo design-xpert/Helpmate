@@ -7,8 +7,7 @@ import {
   Download,
   FileText,
   AlertCircle,
-  RefreshCw,
-  Sparkles
+  RefreshCw
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useStore } from "@/store/useStore";
@@ -123,24 +122,24 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             className="relative w-full max-w-2xl sm:max-w-3xl h-full bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col z-10 print:h-auto print:max-h-none print:shadow-none print:border-none print:w-full print:bg-white"
           >
             {/* Modal Top Controls Bar (Hidden on Print) */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/50 print:hidden shrink-0">
+            <div className="flex items-center justify-between px-3.5 sm:px-6 py-3 sm:py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/50 print:hidden shrink-0">
               <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-purple-100 text-[#581c4f] flex items-center justify-center">
-                  <FileText className="w-5 h-5" />
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-purple-100 text-[#581c4f] flex items-center justify-center shrink-0">
+                  <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-foreground">Tax Invoice</h3>
-                  <p className="text-[10px] text-slate-400 font-medium">Official Service Receipt</p>
+                  <h3 className="text-xs sm:text-sm font-bold text-foreground">Tax Invoice</h3>
+                  <p className="text-[9px] sm:text-[10px] text-slate-400 font-medium">Official Service Receipt</p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 {invoice && (
                   <>
                     <button
                       type="button"
                       onClick={handlePrint}
-                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                      className="hidden xs:flex px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all items-center gap-1.5 cursor-pointer"
                     >
                       <Printer className="w-3.5 h-3.5 text-[#581c4f]" />
                       <span>Print</span>
@@ -149,21 +148,22 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       type="button"
                       disabled={downloadingPdf}
                       onClick={handleDownloadPdf}
-                      className="px-3.5 py-1.5 rounded-xl bg-[#581c4f] hover:bg-[#4a0e4e] text-white text-xs font-extrabold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      className="px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-[#581c4f] hover:bg-[#4a0e4e] text-white text-xs font-extrabold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
                     >
                       {downloadingPdf ? (
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                       ) : (
                         <Download className="w-3.5 h-3.5" />
                       )}
-                      <span>PDF Download</span>
+                      <span className="hidden xs:inline">PDF Download</span>
+                      <span className="xs:hidden">PDF</span>
                     </button>
                   </>
                 )}
                 <button
                   type="button"
                   onClick={onClose}
-                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer ml-1"
+                  className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer ml-1"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -171,7 +171,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             </div>
 
             {/* Drawer Body / Printable Invoice Sheet */}
-            <div className="p-6 md:p-8 overflow-y-auto space-y-6 print:p-6 print:overflow-visible font-sans">
+            <div className="p-3.5 sm:p-6 md:p-8 overflow-y-auto space-y-4 sm:space-y-6 print:p-6 print:overflow-visible font-sans">
               {loading ? (
                 <div className="py-20 text-center space-y-3">
                   <RefreshCw className="w-8 h-8 text-[#581c4f] animate-spin mx-auto" />
@@ -198,23 +198,23 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 <div className="space-y-6 printable-invoice-content" id="printable-invoice">
                   
                   {/* Top Header Banner matching reference image */}
-                  <div className="bg-[#fcf5fa] dark:bg-purple-950/20 p-6 rounded-2xl border border-purple-100/60 dark:border-purple-900/30 flex items-center justify-between gap-4">
+                  <div className="bg-[#fcf5fa] dark:bg-purple-950/20 p-4 sm:p-6 rounded-2xl border border-purple-100/60 dark:border-purple-900/30 flex items-center justify-between gap-4">
                     {/* Brand Logo Box */}
-                    <div className="bg-white p-2.5 rounded-xl border border-purple-100 shadow-xs">
+                    <div className="bg-white p-2 sm:p-2.5 rounded-xl border border-purple-100 shadow-xs shrink-0">
                       <img
                         src="/logo-white.png"
                         alt="HELP MATE"
-                        className="h-12 sm:h-14 w-auto object-contain"
+                        className="h-9 sm:h-14 w-auto object-contain"
                       />
                     </div>
 
                     {/* Right Header Status & Title */}
                     <div className="text-right space-y-1">
-                      <h1 className="text-2xl sm:text-3xl font-black tracking-wide text-[#4e0e47] dark:text-purple-300">
+                      <h1 className="text-xl sm:text-3xl font-black tracking-wide text-[#4e0e47] dark:text-purple-300">
                         INVOICE
                       </h1>
                       <div>
-                        <span className="bg-[#e6f7f0] dark:bg-emerald-950/60 text-[#10b981] dark:text-emerald-400 font-extrabold text-[11px] uppercase tracking-wider px-3.5 py-1 rounded-full inline-block border border-emerald-500/20">
+                        <span className="bg-[#e6f7f0] dark:bg-emerald-950/60 text-[#10b981] dark:text-emerald-400 font-extrabold text-[10px] sm:text-[11px] uppercase tracking-wider px-2.5 sm:px-3.5 py-0.5 sm:py-1 rounded-full inline-block border border-emerald-500/20">
                           {invoice.invoiceStatus || "GENERATED"}
                         </span>
                       </div>
@@ -224,7 +224,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   {/* BILL TO & INVOICE DETAILS Section */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Left Card: BILL TO */}
-                    <div className="p-5 rounded-2xl border border-purple-100/80 dark:border-slate-800 bg-white dark:bg-slate-900/80 shadow-xs space-y-2 text-left">
+                    <div className="p-4 sm:p-5 rounded-2xl border border-purple-100/80 dark:border-slate-800 bg-white dark:bg-slate-900/80 shadow-xs space-y-2 text-left">
                       <span className="text-xs font-black uppercase text-[#8a1562] dark:text-purple-400 tracking-wider block">
                         BILL TO
                       </span>
@@ -243,7 +243,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     </div>
 
                     {/* Right Card: INVOICE DETAILS */}
-                    <div className="p-5 rounded-2xl border border-purple-100/80 dark:border-slate-800 bg-white dark:bg-slate-900/80 shadow-xs space-y-2 text-left">
+                    <div className="p-4 sm:p-5 rounded-2xl border border-purple-100/80 dark:border-slate-800 bg-white dark:bg-slate-900/80 shadow-xs space-y-2 text-left">
                       <span className="text-xs font-black uppercase text-[#8a1562] dark:text-purple-400 tracking-wider block">
                         INVOICE DETAILS
                       </span>
@@ -276,8 +276,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       ORDER ITEMS
                     </h3>
 
-                    <div className="rounded-2xl border border-purple-100/80 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
-                      <table className="w-full text-left text-xs border-collapse">
+                    <div className="rounded-2xl border border-purple-100/80 dark:border-slate-800 overflow-x-auto bg-white dark:bg-slate-900">
+                      <table className="w-full min-w-[440px] text-left text-xs border-collapse">
                         <thead>
                           <tr className="bg-[#f6eaf3] dark:bg-purple-950/40 text-[#581c4f] dark:text-purple-300 uppercase text-[10px] font-black tracking-wider">
                             <th className="py-3.5 px-4 text-left">SERVICE DETAILS</th>
@@ -315,8 +315,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                                 item.selectedAddons.map((addon, aIdx) => (
                                   <tr key={`addon-${idx}-${aIdx}`} className="bg-amber-500/[0.03]">
                                     <td className="py-2.5 px-4 pl-8 text-left">
-                                      <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">
-                                        <Sparkles className="w-3 h-3 text-amber-500" /> + {addon.name}
+                                      <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 block">
+                                        {addon.name}
                                       </span>
                                     </td>
                                     <td className="py-2.5 px-4 text-center text-[11px] text-slate-600">

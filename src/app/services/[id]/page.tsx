@@ -16,7 +16,6 @@ import {
   Search,
   Bookmark,
   Users,
-  Sparkles,
   X,
   Layers
 } from "lucide-react";
@@ -593,6 +592,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
     toggleBookmark,
     fetchBookmarks,
     toggleAddonInCart,
+    setPackageAddons,
     token,
     isLoggedIn
   } = useStore();
@@ -784,6 +784,10 @@ function ServiceDetailPageContent({ params }: PageProps) {
             reviews: pData.reviews,
             isBookmarked: pkg.isBookmarked
           });
+
+          if (pData.addons && pData.addons.length > 0) {
+            setPackageAddons(targetId, pData.addons, pkg.name);
+          }
 
           if (pData.category?.id) {
             setResolvedCategoryId(pData.category.id);
@@ -1309,6 +1313,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
       duration: activeDuration,
       image: pkgImg,
       imageUrl: pkgImg,
+      availableAddons: (selectedItem as any)?.addons || [],
     });
   };
 
@@ -1332,6 +1337,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
         duration: activeDuration,
         image: pkgImg,
         imageUrl: pkgImg,
+        availableAddons: (selectedItem as any)?.addons || [],
       });
     }
 
@@ -1362,6 +1368,8 @@ function ServiceDetailPageContent({ params }: PageProps) {
       duration: item.duration || 30,
       image: pkgImg,
       imageUrl: pkgImg,
+      availableAddons: item.addons || item.availableAddons || [],
+      selectedAddons: item.selectedAddons || [],
     });
   };
 
@@ -1387,6 +1395,8 @@ function ServiceDetailPageContent({ params }: PageProps) {
         duration: item.duration || 30,
         image: pkgImg,
         imageUrl: pkgImg,
+        availableAddons: item.addons || item.availableAddons || [],
+        selectedAddons: item.selectedAddons || [],
       });
     }
 
@@ -1785,11 +1795,16 @@ function ServiceDetailPageContent({ params }: PageProps) {
                                           duration: activeDuration,
                                           image: (selectedItem as any)?.image || (selectedItem as any)?.imageUrl || service.image,
                                           imageUrl: (selectedItem as any)?.image || (selectedItem as any)?.imageUrl || service.image,
+                                          availableAddons: (selectedItem as any)?.addons || [],
                                         });
                                       }
                                     }
 
-                                    await toggleAddonInCart(mainPkgId, addonId, action);
+                                    await toggleAddonInCart(mainPkgId, addonId, action, {
+                                      addonName,
+                                      price: addonPrice,
+                                      imageUrl: addonImg,
+                                    });
                                     addNotification(
                                       action === "add" ? "Add-on Added" : "Add-on Removed",
                                       action === "add" ? `"${addonName}" added to your cart.` : `"${addonName}" removed from your cart.`,
@@ -1801,7 +1816,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
                                     : "bg-accent-lux hover:bg-accent-lux/90 text-white"
                                     }`}
                                 >
-                                  {isAddonAdded ? "Added ✓" : "+ Add"}
+                                  {isAddonAdded ? "Added ✓" : "Add"}
                                 </button>
                               </div>
                             </div>
@@ -1889,22 +1904,37 @@ function ServiceDetailPageContent({ params }: PageProps) {
                       </p>
                     </div>
 
-                    <div className="border-t border-slate-100 dark:border-slate-850 pt-4 space-y-3">
-                      <div className="flex justify-between items-baseline text-xs font-semibold text-slate-500 font-sans">
-                        <span>Package Price</span>
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-accent-lux font-black text-lg font-sans">₹{activePrice}</span>
-                          {activeOriginalPrice && activeOriginalPrice > activePrice && (
-                            <span className="text-slate-400 line-through text-xs font-normal font-sans">₹{activeOriginalPrice}</span>
-                          )}
-                          {activeDiscount && (
-                            <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 font-sans">
-                              {activeDiscount}% OFF
-                            </span>
+                    {(() => {
+                      const mainId = (selectedItem as any)?._id || selectedItem?.id || service.id;
+                      const cartItem = cart.find(c => c.id === mainId || c.itemId === mainId || c.id === `${service.id}-${selectedSub}-${selectedAct}-${selectedItem?.id}`);
+                      const addonTotal = (cartItem?.selectedAddons || []).reduce((sum, a) => sum + (Number(a.price || a.totalPrice) || 0), 0);
+                      const effectiveTotal = activePrice + addonTotal;
+
+                      return (
+                        <div className="border-t border-slate-100 dark:border-slate-850 pt-4 space-y-3">
+                          <div className="flex justify-between items-baseline text-xs font-semibold text-slate-500 font-sans">
+                            <span>Package Total</span>
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-accent-lux font-black text-lg font-sans">₹{effectiveTotal}</span>
+                              {activeOriginalPrice && activeOriginalPrice > activePrice && (
+                                <span className="text-slate-400 line-through text-xs font-normal font-sans">₹{activeOriginalPrice + addonTotal}</span>
+                              )}
+                              {activeDiscount && (
+                                <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 font-sans">
+                                  {activeDiscount}% OFF
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {addonTotal > 0 && (
+                            <div className="flex justify-between items-center text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-1 rounded-lg">
+                              <span>Includes {cartItem?.selectedAddons?.length} add-on{(cartItem?.selectedAddons?.length || 0) > 1 ? "s" : ""}</span>
+                              <span>+₹{addonTotal}</span>
+                            </div>
                           )}
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
 
                     <div className="flex flex-col gap-2.5 pt-2">
                       {(() => {
@@ -1983,7 +2013,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
           <div className="absolute bottom-48 right-1/4 translate-x-1/2 w-96 h-96 bg-accent-lux/[0.03] rounded-full blur-[140px] pointer-events-none" />
 
           {/* Banner Section */}
-          <section className="max-w-7xl mx-auto px-6 py-6 relative z-10">
+          <section className="max-w-7xl mx-auto px-3.5 sm:px-6 py-4 sm:py-6 relative z-10">
             {renderBreadcrumbs(false)}
 
             {/* Service Category Page Heading */}
@@ -2012,7 +2042,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
 
               {/* Left Column - Stepper Wizard */}
               <div className="lg:col-span-8 space-y-6">
-                <div id="booking-wizard-card" className="glass-panel p-6 sm:p-8 border border-slate-200/10 space-y-6 text-left">
+                <div id="booking-wizard-card" className="glass-panel p-3.5 sm:p-8 rounded-2xl sm:rounded-3xl border border-slate-200/10 space-y-6 text-left">
 
                   {/* Progress Tracker Stepper circles with labels & click to navigate */}
                   <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
@@ -2382,33 +2412,37 @@ function ServiceDetailPageContent({ params }: PageProps) {
 
                         <div
                           style={{ top: "calc(var(--header-total-height, 8rem) + 0.5rem)" }}
-                          className="sticky z-20 py-2.5 px-3 -mx-1 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/60 shadow-xs flex items-center justify-between transition-all"
+                          className="sticky z-20 py-2 sm:py-2.5 px-2.5 sm:px-3 -mx-1 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/50 dark:border-slate-800/60 shadow-xs flex items-center justify-between gap-1.5 sm:gap-2 transition-all flex-wrap sm:flex-nowrap"
                         >
-                          <span className="text-[10px] uppercase font-bold text-slate-455 tracking-wider block">
-                            AVAILABLE SERVICE PACKAGES
+                          <span className="text-[9px] sm:text-[10px] uppercase font-bold text-slate-455 tracking-wider block shrink-0">
+                            Available Packages
                           </span>
-                          <div className="flex items-center gap-1.5">
-                            <div className="relative">
-                              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
+                            <div className="relative flex-1 max-w-[130px] xs:max-w-[180px] sm:max-w-xs">
+                              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                               <input
                                 type="text"
                                 placeholder="Search..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-8 pr-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] sm:text-[11px] text-slate-700 dark:text-slate-300 w-56 sm:w-100 focus:outline-none focus:ring-1 focus:ring-accent-lux/30 transition-all placeholder:text-slate-400"
+                                className="w-full pl-7.5 pr-2.5 py-1 sm:py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] sm:text-[11px] text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-accent-lux/30 transition-all placeholder:text-slate-400"
                               />
                             </div>
                             <button
                               onClick={() => setShowSavedOnly(!showSavedOnly)}
-                              className={`flex items-center gap-1.5 p-1.5 px-2.5 rounded-full transition-colors ${showSavedOnly
+                              className={`flex items-center gap-1 p-1 sm:p-1.5 px-2 sm:px-2.5 rounded-full transition-colors shrink-0 text-[10px] font-bold ${showSavedOnly
                                 ? "bg-accent-lux text-white"
                                 : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
                                 }`}
+                              title="Show saved only"
                             >
                               <Bookmark className={`w-3.5 h-3.5 ${showSavedOnly ? "fill-white" : ""}`} />
-                              <span className="text-[10px] font-bold uppercase tracking-wider">
-                                Saved {bookmarkedPackageIds.length > 0 && `(${bookmarkedPackageIds.length})`}
+                              <span className="hidden xs:inline uppercase tracking-wider text-[9px] sm:text-[10px]">
+                                Saved
                               </span>
+                              {bookmarkedPackageIds.length > 0 && (
+                                <span className="text-[9px] font-black">({bookmarkedPackageIds.length})</span>
+                              )}
                             </button>
                           </div>
                         </div>
@@ -2616,7 +2650,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
                                               <div className="flex flex-wrap gap-1.5">
                                                 {item.addons.map((addon: any) => (
                                                   <span key={addon._id || addon.id} className="text-[9px] font-bold bg-accent-lux/10 text-accent-lux px-2 py-0.5 rounded-full">
-                                                    +{addon.addonName || addon.title || addon.name} (₹{addon.price})
+                                                    {addon.addonName || addon.title || addon.name}
                                                   </span>
                                                 ))}
                                               </div>
@@ -2792,9 +2826,9 @@ function ServiceDetailPageContent({ params }: PageProps) {
                                 <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-slate-800/60">
                                   {item.selectedAddons.map((addon) => (
                                     <div key={addon.addonId} className="flex items-center justify-between text-[9px] text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/60 px-2 py-1 rounded-md">
-                                      <span className="truncate pr-1">+ {addon.addonName} {addon.quantity > 1 ? `(x${addon.quantity})` : ""}</span>
+                                      <span className="truncate pr-1">{addon.addonName} {addon.quantity > 1 ? `(x${addon.quantity})` : ""}</span>
                                       <div className="flex items-center gap-1 shrink-0">
-                                        <span className="font-bold text-foreground font-sans">+₹{addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1))}</span>
+                                        <span className="font-bold text-foreground font-sans">₹{addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1))}</span>
                                         <button
                                           onClick={() => toggleAddonInCart(item.itemId || item.id, addon.addonId, "remove")}
                                           className="text-slate-400 hover:text-rose-500 ml-0.5 cursor-pointer"
@@ -2834,9 +2868,9 @@ function ServiceDetailPageContent({ params }: PageProps) {
                             {addonSubtotalVal > 0 && (
                               <div className="flex justify-between text-accent-lux font-bold">
                                 <span className="flex items-center gap-1">
-                                  <Sparkles className="w-3 h-3 text-accent-lux" /> Add-ons Subtotal
+                                  Add-ons Subtotal
                                 </span>
-                                <span>+₹{addonSubtotalVal}</span>
+                                <span>₹{addonSubtotalVal}</span>
                               </div>
                             )}
                             <div className="flex justify-between border-t border-slate-100/60 dark:border-slate-800/60 pt-1 text-slate-700 dark:text-slate-300 font-extrabold">
@@ -2909,13 +2943,27 @@ function ServiceDetailPageContent({ params }: PageProps) {
       {/* Sticky Bottom Actions Bar (for details layout on mobile screens) */}
       {isStandaloneDetailsView && selectedItem && (
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200/40 dark:border-slate-800/60 py-3.5 px-6 flex items-center justify-between shadow-[0_-8px_30px_rgb(0,0,0,0.06)] lg:hidden font-sans">
-          <div className="flex flex-col text-left">
-            <span className="text-[9px] uppercase font-bold text-slate-455 tracking-wider">Selected Service</span>
-            <span className="text-xs font-extrabold text-foreground truncate max-w-[150px]">
-              {activeName}
-            </span>
-            <span className="text-[10px] font-black text-accent-lux font-sans leading-none mt-0.5">₹{activePrice}</span>
-          </div>
+          {(() => {
+            const mainId = (selectedItem as any)?._id || selectedItem?.id || service.id;
+            const cartItem = cart.find(c => c.id === mainId || c.itemId === mainId || c.id === `${service.id}-${selectedSub}-${selectedAct}-${selectedItem?.id}`);
+            const addonTotal = (cartItem?.selectedAddons || []).reduce((sum, a) => sum + (Number(a.price || a.totalPrice) || 0), 0);
+            const effectiveTotal = activePrice + addonTotal;
+
+            return (
+              <div className="flex flex-col text-left">
+                <span className="text-[9px] uppercase font-bold text-slate-455 tracking-wider">Selected Service</span>
+                <span className="text-xs font-extrabold text-foreground truncate max-w-[150px]">
+                  {activeName}
+                </span>
+                <div className="flex items-baseline gap-1 mt-0.5">
+                  <span className="text-[10px] font-black text-accent-lux font-sans leading-none">₹{effectiveTotal}</span>
+                  {addonTotal > 0 && (
+                    <span className="text-[9px] text-slate-400 font-medium">({cartItem?.selectedAddons?.length} addons)</span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="flex gap-2.5">
             {(() => {

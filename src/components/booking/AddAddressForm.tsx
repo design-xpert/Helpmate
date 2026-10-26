@@ -12,6 +12,7 @@ import {
   Loader2,
   ChevronDown,
   Search,
+  X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Address, AddressRecipientType, useStore } from "@/store/useStore";
@@ -61,6 +62,7 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
   // Custom Locality Dropdown States
   const [isLocalityDropdownOpen, setIsLocalityDropdownOpen] = useState<boolean>(false);
   const [localitySearch, setLocalitySearch] = useState<string>("");
+  const [isSearchingLocality, setIsSearchingLocality] = useState<boolean>(false);
   const localityDropdownRef = useRef<HTMLDivElement>(null);
 
   const [locality, setLocality] = useState<string>(initialData?.locality || "");
@@ -203,6 +205,47 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
     };
   }, [isLocalityDropdownOpen]);
 
+  // Dynamic API search for localities with debounce
+  useEffect(() => {
+    if (!isLocalityDropdownOpen) return;
+
+    let isCancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        setIsSearchingLocality(true);
+        const res = await getLocalitiesApi(localitySearch.trim());
+        if (isCancelled) return;
+
+        if (res && res.success) {
+          const rawList: any[] =
+            res.data?.localities ||
+            (Array.isArray(res.data) ? res.data : []) ||
+            (res as any).localities ||
+            [];
+          const mapped = rawList
+            .filter((loc) => loc.status !== false)
+            .map((loc) => ({
+              id: String(loc._id || loc.id),
+              name: loc.localityName || loc.name || "Locality",
+              pincode: loc.pincode || "",
+            }));
+          setLocalities(mapped);
+        }
+      } catch (err) {
+        console.error("Error searching localities via API:", err);
+      } finally {
+        if (!isCancelled) {
+          setIsSearchingLocality(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [localitySearch, isLocalityDropdownOpen]);
+
   const selectLocality = (loc: { id: string; name: string; pincode: string }) => {
     setLocality(loc.name);
     setLocalityId(loc.id);
@@ -254,10 +297,11 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
     }
 
     const cleanPin = (pincode || "").trim().replace(/\D/g, "");
-    if (!cleanPin || cleanPin.length !== 6) {
-      toast.error("Invalid Pincode", "Please enter a valid 6-digit postal pincode.");
-      return;
-    }
+    const finalPincode =
+      cleanPin.length === 6
+        ? cleanPin
+        : localities.find((l) => l.id === localityId || l.name.toLowerCase() === locality.toLowerCase())?.pincode ||
+          "221010";
 
     const cleanPhone = (recipientPhone || "").trim().replace(/\D/g, "");
     if (recipientType !== "Self") {
@@ -279,7 +323,7 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
       recipientMobile: cleanPhone || currentUser.phone,
       locality,
       localityId: localityId || "",
-      pincode: cleanPin,
+      pincode: finalPincode,
       landmark: landmark.trim(),
       addressLine: streetAddress.trim(),
       city,
@@ -313,11 +357,11 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
           <button
             type="button"
             onClick={() => {
-              if (!isLoadingLocalities && localities.length > 0) {
+              if (!isLoadingLocalities) {
                 setIsLocalityDropdownOpen((prev) => !prev);
               }
             }}
-            disabled={isLoadingLocalities || localities.length === 0}
+            disabled={isLoadingLocalities}
             className={`w-full bg-slate-50 dark:bg-slate-800/80 border text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
               isLocalityDropdownOpen
                 ? "border-[#782860] ring-2 ring-[#782860]/20 bg-white dark:bg-slate-900"
@@ -331,11 +375,11 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
                   <Loader2 className="w-3 h-3 animate-spin text-[#782860]" /> Loading localities...
                 </span>
               ) : locality ? (
-                <span className="text-foreground truncate font-bold flex items-center gap-1.5">
-                  {locality}
+                <span className="text-foreground truncate font-bold flex items-center gap-2">
+                  <span>{locality}</span>
                   {pincode && (
-                    <span className="text-[10px] font-mono font-medium px-1.5 py-0.2 rounded bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-                      {pincode}
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-[#782860]/10 text-[#782860] dark:bg-[#782860]/20 dark:text-purple-300 border border-[#782860]/20">
+                      PIN: {pincode}
                     </span>
                   )}
                 </span>
@@ -370,15 +414,31 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
                       value={localitySearch}
                       onChange={(e) => setLocalitySearch(e.target.value)}
                       placeholder="Search locality..."
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 pl-8 pr-2.5 py-1.5 rounded-xl text-xs text-foreground placeholder:text-slate-400 focus:outline-none focus:border-[#782860]"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 pl-8 pr-7 py-1.5 rounded-xl text-xs text-foreground placeholder:text-slate-400 focus:outline-none focus:border-[#782860]"
                       autoFocus
                     />
+                    {isSearchingLocality ? (
+                      <Loader2 className="w-3.5 h-3.5 text-[#782860] animate-spin absolute right-2.5 pointer-events-none" />
+                    ) : localitySearch ? (
+                      <button
+                        type="button"
+                        onClick={() => setLocalitySearch("")}
+                        className="absolute right-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 
                 {/* Localities List */}
                 <div className="max-h-52 overflow-y-auto p-1.5 space-y-0.5">
-                  {filteredLocalities.length === 0 ? (
+                  {isSearchingLocality ? (
+                    <div className="py-6 flex flex-col items-center justify-center gap-1.5 text-xs text-slate-400">
+                      <Loader2 className="w-4 h-4 text-[#782860] animate-spin" />
+                      <span>Searching localities...</span>
+                    </div>
+                  ) : filteredLocalities.length === 0 ? (
                     <div className="py-4 text-center text-xs text-slate-400">
                       No matching locality found
                     </div>
@@ -419,16 +479,14 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
 
         <div>
           <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
-            Pincode *
+            Pincode
           </label>
           <input
             type="text"
             value={pincode}
-            onChange={(e) => setPincode(e.target.value)}
-            placeholder="6-digit pincode"
-            maxLength={6}
-            className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 px-3 py-2 rounded-xl text-xs font-mono font-bold text-foreground focus:outline-none focus:border-[#782860]"
-            required
+            readOnly
+            placeholder="Pincode from locality"
+            className="w-full bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 px-3 py-2 rounded-xl text-xs font-mono font-bold text-slate-700 dark:text-slate-300 cursor-not-allowed select-none focus:outline-none"
           />
         </div>
       </div>

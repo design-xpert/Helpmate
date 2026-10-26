@@ -210,23 +210,23 @@ function HeaderContent() {
       <BetaBanner />
 
       <div className={`transition-all duration-300 ${scrolled ? "py-2 sm:py-2.5" : "py-3 sm:py-3.5"}`}>
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between gap-6">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-6">
 
         {/* LOGO */}
-        <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-2 group">
-            <img src="/logo-transparent.png" alt="HelpMate Logo" className="h-13 sm:h-14 w-auto object-contain" />
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <Link href="/" className="flex items-center gap-2 group shrink-0">
+            <img src="/logo-transparent.png" alt="HelpMate Logo" className="h-9 sm:h-13 w-auto object-contain" />
           </Link>
 
           {/* Location Picker */}
           <button
             onClick={() => setShowLocationModal(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-full bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-700/80 border border-slate-200/10 transition-all duration-300 text-[11px] sm:text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+            className="flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-full bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-700/80 border border-slate-200/10 transition-all duration-300 text-[10px] sm:text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer shrink-0"
             title="Change service location"
           >
-            <MapPin className="w-3.5 h-3.5 text-accent-lux shrink-0" />
-            <span className="truncate max-w-[85px] xs:max-w-[110px] sm:max-w-[140px]">{selectedLocation || "Select Location"}</span>
-            <ChevronDown className="w-3 h-3 opacity-60 shrink-0" />
+            <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-accent-lux shrink-0" />
+            <span className="truncate max-w-[65px] xs:max-w-[85px] sm:max-w-[140px]">{selectedLocation || "Location"}</span>
+            <ChevronDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 opacity-60 shrink-0" />
           </button>
         </div>
 
@@ -303,7 +303,7 @@ function HeaderContent() {
         </form>
 
         {/* Right Nav Options */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Theme Switcher */}
           {/* <button
             onClick={toggleTheme}
@@ -321,12 +321,12 @@ function HeaderContent() {
                 setShowNotifications(false);
                 setShowProfileMenu(false);
               }}
-              className="w-9 h-9 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors text-slate-600 dark:text-slate-300 relative cursor-pointer"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800/50 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors text-slate-600 dark:text-slate-300 relative cursor-pointer shrink-0"
               aria-label="Shopping Cart"
             >
-              <ShoppingCart className="w-4 h-4" />
+              <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               {cart.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-accent-lux text-white text-[9px] font-black rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-md">
+                <span className="absolute -top-1 -right-1 w-4.5 h-4.5 sm:w-5 sm:h-5 bg-accent-lux text-white text-[8px] sm:text-[9px] font-black rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-md">
                   {cart.length}
                 </span>
               )}
@@ -339,7 +339,7 @@ function HeaderContent() {
                   initial={{ opacity: 0, y: 15, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 15, scale: 0.95 }}
-                  className="absolute right-0 mt-3 w-84 bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden shadow-2xl z-50 p-3 text-left font-sans"
+                  className="absolute right-0 mt-3 w-[calc(100vw-1.5rem)] max-w-sm sm:w-84 bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden shadow-2xl z-50 p-3 text-left font-sans"
                 >
                   <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 mb-2">
                     <span className="font-bold text-xs text-foreground">Selected Services</span>
@@ -381,24 +381,9 @@ function HeaderContent() {
                                 <p className="text-[9px] text-slate-400 mt-0.5 capitalize">⏱ {formatDuration(item.duration)}</p>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                {/* Quantity Stepper */}
-                                <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-white dark:bg-slate-800">
-                                  <button
-                                    onClick={() => updateCartQuantity(item.id, (item.quantity || 1) - 1)}
-                                    className="w-5 h-5 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors font-bold text-xs cursor-pointer"
-                                  >
-                                    -
-                                  </button>
-                                  <span className="px-1 text-xs font-bold text-foreground font-sans min-w-[14px] text-center">
-                                    {item.quantity || 1}
-                                  </span>
-                                  <button
-                                    onClick={() => updateCartQuantity(item.id, (item.quantity || 1) + 1)}
-                                    className="w-5 h-5 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors font-bold text-xs cursor-pointer"
-                                  >
-                                    +
-                                  </button>
-                                </div>
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold font-sans px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800">
+                                  Qty: {item.quantity || 1}
+                                </span>
 
                                 <span className="text-xs font-black text-accent-lux font-sans min-w-[40px] text-right">
                                   ₹{itemTotal}
@@ -420,10 +405,10 @@ function HeaderContent() {
                                 {item.selectedAddons.map((addon) => (
                                   <div key={addon.addonId} className="flex items-center justify-between text-[9px] bg-white/60 dark:bg-slate-800/50 px-2 py-0.5 rounded-md">
                                     <span className="text-slate-600 dark:text-slate-300 font-medium truncate max-w-[140px]">
-                                      + {addon.addonName} {addon.quantity > 1 ? `(x${addon.quantity})` : ""}
+                                      {addon.addonName} {addon.quantity > 1 ? `(x${addon.quantity})` : ""}
                                     </span>
                                     <div className="flex items-center gap-1">
-                                      <span className="font-bold text-foreground">+₹{addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1))}</span>
+                                      <span className="font-bold text-foreground">₹{addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1))}</span>
                                       <button
                                         onClick={() => toggleAddonInCart(item.itemId || item.id, addon.addonId, "remove")}
                                         className="text-slate-400 hover:text-rose-500 ml-0.5 cursor-pointer"
@@ -625,10 +610,11 @@ function HeaderContent() {
                   } catch {}
                 }
               }}
-              className="px-4.5 py-2 rounded-full bg-accent-lux hover:bg-accent-lux/95 text-white font-bold text-xs shadow-md shadow-accent-lux/20 transition-all cursor-pointer flex items-center gap-1.5"
+              className="px-2.5 sm:px-4.5 py-1.5 sm:py-2 rounded-full bg-accent-lux hover:bg-accent-lux/95 text-white font-bold text-[11px] sm:text-xs shadow-md shadow-accent-lux/20 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 whitespace-nowrap"
             >
-              <User className="w-3.5 h-3.5" />
-              <span>Sign In / Sign Up</span>
+              <User className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Sign In / Sign Up</span>
+              <span className="sm:hidden">Sign In</span>
             </Link>
           )}
         </div>

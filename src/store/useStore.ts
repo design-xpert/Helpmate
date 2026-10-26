@@ -37,9 +37,22 @@ import {
   CreateReviewPayload,
   UpdateReviewPayload,
 } from "@/services/reviewApi";
-import { fetchCustomerPackagesApi } from "@/services/packageApi";
 import { formatImageUrl } from "@/utils/image";
 import { isTokenExpired, isAuthError, handleTokenExpiration } from "@/utils/token";
+export interface CartAddon {
+  id?: string;
+  _id?: string;
+  name?: string;
+  addonName?: string;
+  price: number;
+  description?: string;
+  imageUrl?: string;
+  image?: string;
+  unit?: string;
+  packageId?: string;
+  packageName?: string;
+}
+
 export interface CartItem {
   id: string;
   itemId?: string;
@@ -51,6 +64,7 @@ export interface CartItem {
   duration: number; // in mins
   image?: string;
   imageUrl?: string;
+  availableAddons?: CartAddon[];
   review?: {
     reviewId?: string;
     rating: number;
@@ -74,6 +88,102 @@ export const getItemAddonTotal = (item: CartItem): number => {
     (sum, a) => sum + (a.totalPrice || ((a.price || 0) * (a.quantity || 1))),
     0
   );
+};
+
+export const extractStoredCartAddons = (
+  cart: CartItem[],
+  packageAddonsMap: Record<string, CartAddon[]> = {}
+): any[] => {
+  if (!cart || cart.length === 0) return [];
+  const matchedAddons: any[] = [];
+  const seenAddonKeys = new Set<string>();
+
+  cart.forEach((c) => {
+    const rawId = c.packageId || c.itemId || c.id;
+    const hexMatch = String(rawId).match(/[0-9a-fA-F]{24}/);
+    const hex = hexMatch ? hexMatch[0] : rawId;
+    const pName = c.name;
+
+    // Check item's direct availableAddons, or store's packageAddonsMap
+    const rawAddons =
+      (c.availableAddons && c.availableAddons.length > 0 ? c.availableAddons : null) ||
+      (c as any).addons ||
+      (hex && packageAddonsMap[hex]) ||
+      (rawId && packageAddonsMap[rawId]) ||
+      [];
+
+    if (Array.isArray(rawAddons)) {
+      rawAddons.forEach((addon: any) => {
+        const aId = String(addon._id || addon.id || addon.addonId || "");
+        const aKey = `${hex || rawId}-${aId}`;
+        if (aId && !seenAddonKeys.has(aKey)) {
+          seenAddonKeys.add(aKey);
+          matchedAddons.push({
+            id: aId,
+            packageId: hex || rawId,
+            packageName: pName,
+            name: addon.addonName || addon.title || addon.name || "Service Add-on",
+            price: typeof addon.price === "number" ? addon.price : Number(addon.price) || 0,
+            description: addon.description || "",
+            imageUrl: addon.imageUrl || addon.image ? formatImageUrl(addon.imageUrl || addon.image) : `/api/media/addon/${aId}/image`,
+          });
+        }
+      });
+    }
+  });
+
+  return matchedAddons;
+};
+
+export const calculateGuestPricing = (cartItems: CartItem[]): ApiCartPricing => {
+  const itemsSubtotal = cartItems.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
+  const addonSubtotal = cartItems.reduce((sum, item) => sum + getItemAddonTotal(item), 0);
+  const subtotal = itemsSubtotal + addonSubtotal;
+  const gstRate = 18;
+  const gst = 0;
+  const convenienceFee = subtotal > 0 ? 49 : 0;
+  const grandTotal = subtotal + gst + convenienceFee;
+  return {
+    itemsSubtotal,
+    addonSubtotal,
+    subtotal,
+    gstRate,
+    gst,
+    convenienceFee,
+    grandTotal,
+  };
+};
+
+const syncGuestCartToServer = async (guestCart: CartItem[], userToken: string) => {
+  if (!userToken || guestCart.length === 0) return;
+  try {
+    for (const item of guestCart) {
+      const rawPkgId = item.packageId || item.id || item.itemId;
+      const hexMatch = String(rawPkgId).match(/[0-9a-fA-F]{24}/);
+      const packageId = hexMatch ? hexMatch[0] : rawPkgId;
+      if (packageId) {
+        const addRes = await addToCartApi(userToken, packageId, item.quantity || 1);
+        if (item.selectedAddons && item.selectedAddons.length > 0) {
+          let serverItemId: string | undefined;
+          if (addRes?.success && addRes.data?.cart?.items) {
+            const serverItem = addRes.data.cart.items.find((si: any) =>
+              String(si.packageId?._id || si.packageId) === String(packageId)
+            );
+            serverItemId = serverItem?._id || serverItem?.itemId;
+          }
+          if (serverItemId) {
+            for (const addon of item.selectedAddons) {
+              if (addon.addonId) {
+                await updateCartAddonApi(userToken, serverItemId, addon.addonId, "add");
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error syncing guest cart items to server:", err);
+  }
 };
 
 export type AddressRecipientType = "Self" | "Family Member" | "Friend / Neighbor" | "Office / Work" | "Other";
@@ -196,8 +306,10 @@ interface AppState {
   cart: CartItem[];
   cartId: string | null;
   cartPricing: ApiCartPricing | null;
+  packageAddonsMap: Record<string, CartAddon[]>;
+  setPackageAddons: (packageId: string, addons: any[], packageName?: string) => void;
   fetchServerCart: () => Promise<void>;
-  addToCart: (item: Omit<CartItem, "quantity"> | CartItem, quantityOverride?: number) => Promise<void>;
+  addToCart: (item: (Omit<CartItem, "quantity"> | CartItem) & { addons?: any[]; availableAddons?: any[]; selectedAddons?: any[] }, quantityOverride?: number) => Promise<void>;
   removeFromCart: (id: string) => Promise<void>;
   updateCartQuantity: (id: string, quantity: number) => Promise<void>;
   clearCart: () => Promise<void>;
@@ -559,16 +671,7 @@ export const useStore = create<AppState>()(
         });
         if (token) {
           if (existingGuestCart.length > 0) {
-            try {
-              for (const item of existingGuestCart) {
-                const packageId = item.id || item.itemId;
-                if (packageId) {
-                  await addToCartApi(token, packageId, item.quantity || 1);
-                }
-              }
-            } catch (err) {
-              console.error("Error syncing guest cart items to server:", err);
-            }
+            await syncGuestCartToServer(existingGuestCart, token);
           }
           await get().fetchServerCart();
           get().fetchAddresses();
@@ -592,16 +695,7 @@ export const useStore = create<AppState>()(
           customerCode: customer.customerCode,
         });
         if (token && existingGuestCart.length > 0) {
-          try {
-            for (const item of existingGuestCart) {
-              const packageId = item.id || item.itemId;
-              if (packageId) {
-                await addToCartApi(token, packageId, item.quantity || 1);
-              }
-            }
-          } catch (err) {
-            console.error("Error syncing guest cart items to server:", err);
-          }
+          await syncGuestCartToServer(existingGuestCart, token);
         }
         await get().fetchServerCart();
         get().fetchAddresses();
@@ -724,40 +818,6 @@ export const useStore = create<AppState>()(
               };
             });
 
-            // If any mapped item is missing package name, price, or image, fetch customer packages to enrich details
-            const needsEnrichment = mappedItems.some((m) => !m.name || m.name === "Service Package" || m.price === 0 || !m.imageUrl);
-            if (needsEnrichment && mappedItems.length > 0) {
-              try {
-                const pkgRes = await fetchCustomerPackagesApi({ limit: 50 });
-                if (pkgRes.success && pkgRes.data) {
-                  const fetchedList = pkgRes.data;
-                  mappedItems = mappedItems.map((m) => {
-                    const match = fetchedList.find((p: any) => {
-                      const pId = String(p.package?.id || p.package?._id || p._id || p.id);
-                      return pId === String(m.id) || pId === String(m.itemId) || pId === String(m.packageId) || (p.package?.name && p.package.name === m.name);
-                    });
-                    if (match) {
-                      const pData = (match.package || match) as any;
-                      const rawImg = pData.imageUrl || pData.thumbnailUrl || pData.image;
-                      const matchedImg = rawImg ? formatImageUrl(rawImg) : undefined;
-                      return {
-                        ...m,
-                        name: pData.packageName || pData.name || m.name,
-                        price: pData.price || m.price,
-                        duration: pData.duration || m.duration,
-                        category: match.category?.name || m.category,
-                        imageUrl: m.imageUrl || matchedImg,
-                        image: m.image || matchedImg,
-                      };
-                    }
-                    return m;
-                  });
-                }
-              } catch (e) {
-                console.warn("Could not enrich cart package details:", e);
-              }
-            }
-
             const currentCart = get().cart;
 
             if (mappedItems.length === 0) {
@@ -781,6 +841,12 @@ export const useStore = create<AppState>()(
 
             const finalCart: CartItem[] = mappedItems.map((m) => {
               const localMatch = findLocalMatch(m);
+              const pkgHex = (String(m.packageId || m.itemId || m.id).match(/[0-9a-fA-F]{24}/) || [])[0];
+              const mapAddons = (pkgHex && get().packageAddonsMap?.[pkgHex]) || get().packageAddonsMap?.[m.id] || [];
+              const storedAddons = (localMatch && localMatch.availableAddons && localMatch.availableAddons.length > 0)
+                ? localMatch.availableAddons
+                : mapAddons;
+
               if (localMatch) {
                 return {
                   ...localMatch,
@@ -791,9 +857,13 @@ export const useStore = create<AppState>()(
                   category: localMatch.category || m.category,
                   imageUrl: m.imageUrl || localMatch.imageUrl || localMatch.image,
                   image: m.image || localMatch.image || localMatch.imageUrl,
+                  availableAddons: storedAddons,
                 };
               }
-              return m;
+              return {
+                ...m,
+                availableAddons: storedAddons,
+              };
             });
 
             set({
@@ -812,49 +882,160 @@ export const useStore = create<AppState>()(
         }
       },
 
-      addToCart: async (item: Omit<CartItem, "quantity"> | CartItem, quantityOverride?: number) => {
+      packageAddonsMap: {},
+      setPackageAddons: (packageId: string, addons: any[], packageName?: string) => {
+        if (!packageId || !Array.isArray(addons)) return;
+        const normalized: CartAddon[] = addons.map((a: any) => {
+          const aId = String(a.id || a._id || a.addonId || "");
+          const aName = a.name || a.addonName || a.title || "Service Add-on";
+          const aPrice = typeof a.price === "number" ? a.price : Number(a.price) || 0;
+          const aDesc = a.description || "";
+          const aImg = a.imageUrl || a.image ? formatImageUrl(a.imageUrl || a.image) : (aId ? `/api/media/addon/${aId}/image` : "");
+          return {
+            id: aId,
+            _id: aId,
+            name: aName,
+            addonName: aName,
+            price: aPrice,
+            description: aDesc,
+            imageUrl: aImg,
+            image: aImg,
+            unit: a.unit || "",
+            packageId,
+            packageName,
+          };
+        });
+
+        set((state) => {
+          const updatedMap = { ...state.packageAddonsMap, [packageId]: normalized };
+          const hexMatch = String(packageId).match(/[0-9a-fA-F]{24}/);
+          if (hexMatch) {
+            updatedMap[hexMatch[0]] = normalized;
+          }
+          return { packageAddonsMap: updatedMap };
+        });
+      },
+
+      addToCart: async (item: (Omit<CartItem, "quantity"> | CartItem) & { addons?: any[]; availableAddons?: any[] }, quantityOverride?: number) => {
         const targetId = item.id || item.itemId || `pkg-${Date.now()}`;
         const itemQuantity = quantityOverride || (item as any).quantity || 1;
         const rawItemImg = (item as any).imageUrl || (item as any).image;
         const cleanItemImg = rawItemImg ? formatImageUrl(rawItemImg) : undefined;
 
+        // Extract and normalize available addons passed with package
+        const rawAddons = item.availableAddons || (item as any).addons || [];
+        const normalizedAddons: CartAddon[] = Array.isArray(rawAddons)
+          ? rawAddons.map((a: any) => {
+              const aId = String(a.id || a._id || a.addonId || "");
+              const aName = a.name || a.addonName || a.title || "Service Add-on";
+              const aPrice = typeof a.price === "number" ? a.price : Number(a.price) || 0;
+              const aDesc = a.description || "";
+              const aImg = a.imageUrl || a.image ? formatImageUrl(a.imageUrl || a.image) : (aId ? `/api/media/addon/${aId}/image` : "");
+              return {
+                id: aId,
+                _id: aId,
+                name: aName,
+                addonName: aName,
+                price: aPrice,
+                description: aDesc,
+                imageUrl: aImg,
+                image: aImg,
+                unit: a.unit || "",
+                packageId: targetId,
+                packageName: item.name,
+              };
+            })
+          : [];
+
         set((state) => {
+          let updated: CartItem[];
           const existingIndex = state.cart.findIndex((i) =>
             (i.id && String(i.id) === String(targetId)) ||
             (i.itemId && String(i.itemId) === String(targetId))
           );
-          if (existingIndex >= 0) {
-            const updated = [...state.cart];
-            updated[existingIndex] = {
-              ...updated[existingIndex],
-              quantity: (updated[existingIndex].quantity || 1) + itemQuantity,
-              image: updated[existingIndex].image || cleanItemImg,
-              imageUrl: updated[existingIndex].imageUrl || cleanItemImg,
-            };
-            return { cart: updated };
+
+          // Update packageAddonsMap if addons provided
+          const newAddonsMap = { ...state.packageAddonsMap };
+          if (normalizedAddons.length > 0) {
+            newAddonsMap[targetId] = normalizedAddons;
+            const hexMatch = String(targetId).match(/[0-9a-fA-F]{24}/);
+            if (hexMatch) {
+              newAddonsMap[hexMatch[0]] = normalizedAddons;
+            }
           }
-          const newItem: CartItem = {
-            id: targetId,
-            itemId: item.itemId || targetId,
-            packageId: (item as any).packageId || (typeof targetId === "string" && targetId.match(/[0-9a-fA-F]{24}/) ? targetId : undefined),
-            name: item.name || "Service Package",
-            price: item.price || 0,
-            category: item.category || "Service",
-            duration: item.duration || 30,
-            quantity: itemQuantity,
-            image: cleanItemImg,
-            imageUrl: cleanItemImg,
-            selectedAddons: item.selectedAddons || [],
-          };
+
+          if (existingIndex >= 0) {
+            updated = [...state.cart];
+            const prevItem = updated[existingIndex];
+            const mergedAddons = normalizedAddons.length > 0
+              ? normalizedAddons
+              : (prevItem.availableAddons && prevItem.availableAddons.length > 0)
+              ? prevItem.availableAddons
+              : newAddonsMap[targetId] || [];
+
+            updated[existingIndex] = {
+              ...prevItem,
+              quantity: (prevItem.quantity || 1) + itemQuantity,
+              image: prevItem.image || cleanItemImg,
+              imageUrl: prevItem.imageUrl || cleanItemImg,
+              availableAddons: mergedAddons,
+              selectedAddons: (item.selectedAddons && item.selectedAddons.length > 0) ? item.selectedAddons : prevItem.selectedAddons,
+            };
+          } else {
+            const hexMatch = typeof targetId === "string" ? targetId.match(/[0-9a-fA-F]{24}/) : null;
+            const cleanPkgId = hexMatch ? hexMatch[0] : undefined;
+            const finalAddons = normalizedAddons.length > 0
+              ? normalizedAddons
+              : (cleanPkgId && newAddonsMap[cleanPkgId]) || newAddonsMap[targetId] || [];
+
+            const newItem: CartItem = {
+              id: targetId,
+              itemId: item.itemId || targetId,
+              packageId: (item as any).packageId || cleanPkgId,
+              name: item.name || "Service Package",
+              price: item.price || 0,
+              category: item.category || "Service",
+              duration: item.duration || 30,
+              quantity: itemQuantity,
+              image: cleanItemImg,
+              imageUrl: cleanItemImg,
+              availableAddons: finalAddons,
+              selectedAddons: item.selectedAddons || [],
+            };
+            updated = [...state.cart, newItem];
+          }
           return {
-            cart: [...state.cart, newItem],
+            cart: updated,
+            packageAddonsMap: newAddonsMap,
+            ...(!state.token ? { cartPricing: calculateGuestPricing(updated) } : {}),
           };
         });
 
         const token = get().token;
         if (token && targetId) {
           try {
-            await addToCartApi(token, targetId, itemQuantity);
+            const addRes = await addToCartApi(token, targetId, itemQuantity);
+            if (item.selectedAddons && Array.isArray(item.selectedAddons) && item.selectedAddons.length > 0) {
+              let serverItemId: string | undefined;
+              if (addRes?.success && addRes.data?.cart?.items) {
+                const serverItem = addRes.data.cart.items.find((si: any) =>
+                  String(si.packageId?._id || si.packageId) === String(targetId)
+                );
+                serverItemId = serverItem?._id || serverItem?.itemId;
+              }
+              if (serverItemId) {
+                for (const addon of item.selectedAddons) {
+                  const aId = addon.addonId || (addon as any).id || (addon as any)._id;
+                  if (aId) {
+                    try {
+                      await updateCartAddonApi(token, serverItemId, aId, "add");
+                    } catch (aErr) {
+                      console.error("Error adding initial addon to server cart:", aErr);
+                    }
+                  }
+                }
+              }
+            }
             await get().fetchServerCart();
           } catch (err) {
             console.error("Error adding to server cart:", err);
@@ -868,9 +1049,13 @@ export const useStore = create<AppState>()(
         const itemId = targetItem?.itemId || targetItem?.id || id;
 
         // Optimistically remove from local state immediately
-        set((state) => ({
-          cart: state.cart.filter((item) => item.id !== id && item.itemId !== id),
-        }));
+        set((state) => {
+          const updated = state.cart.filter((item) => item.id !== id && item.itemId !== id);
+          return {
+            cart: updated,
+            ...(!state.token ? { cartPricing: calculateGuestPricing(updated) } : {}),
+          };
+        });
 
         if (token && itemId) {
           try {
@@ -888,15 +1073,15 @@ export const useStore = create<AppState>()(
         const itemId = targetItem?.itemId || targetItem?.id || id;
 
         // Optimistically update local state immediately
-        if (quantity <= 0) {
-          set((state) => ({
-            cart: state.cart.filter((item) => item.id !== id && item.itemId !== id),
-          }));
-        } else {
-          set((state) => ({
-            cart: state.cart.map((item) => ((item.id === id || item.itemId === id) ? { ...item, quantity } : item)),
-          }));
-        }
+        set((state) => {
+          const updated = quantity <= 0
+            ? state.cart.filter((item) => item.id !== id && item.itemId !== id)
+            : state.cart.map((item) => ((item.id === id || item.itemId === id) ? { ...item, quantity } : item));
+          return {
+            cart: updated,
+            ...(!state.token ? { cartPricing: calculateGuestPricing(updated) } : {}),
+          };
+        });
 
         if (token && itemId) {
           try {
@@ -934,9 +1119,11 @@ export const useStore = create<AppState>()(
 
       toggleAddonInCart: async (itemId, addonId, action, addonDetails) => {
         const token = get().token;
-        const targetItem = get().cart.find(
-          (i) => i.id === itemId || i.itemId === itemId || i.packageId === itemId || (itemId && String(i.id).includes(String(itemId)))
-        );
+        const currentCart = get().cart;
+        const targetItem = currentCart.find(
+          (i) => i.id === itemId || i.itemId === itemId || i.packageId === itemId ||
+            (itemId && (String(i.id).includes(String(itemId)) || String(itemId).includes(String(i.id))))
+        ) || (currentCart.length === 1 ? currentCart[0] : undefined);
         const serverItemId = targetItem?.itemId || targetItem?.id || itemId;
 
         if (token && serverItemId) {
@@ -949,22 +1136,23 @@ export const useStore = create<AppState>()(
           }
         }
 
-        set((state) => ({
-          cart: state.cart.map((item) => {
+        set((state) => {
+          const updatedCart = state.cart.map((item) => {
             const isTarget =
               item.id === itemId ||
               item.itemId === itemId ||
               item.packageId === itemId ||
-              (itemId && String(item.id).includes(String(itemId))) ||
+              (itemId && (String(item.id).includes(String(itemId)) || String(itemId).includes(String(item.id)))) ||
               (targetItem && (item.id === targetItem.id || item.itemId === targetItem.itemId));
             if (isTarget) {
               const currentAddons = item.selectedAddons || [];
               let newAddons = [...currentAddons];
               if (action === "add") {
-                const existingIdx = newAddons.findIndex((a) => a.addonId === addonId);
-                const name = addonDetails?.addonName || "Addon";
-                const priceVal = typeof addonDetails?.price === "number" ? addonDetails.price : 0;
-                const rawAddonImg = addonDetails?.imageUrl || (addonDetails as any)?.image;
+                const existingIdx = newAddons.findIndex((a) => String(a.addonId) === String(addonId));
+                const availAddon = (item.availableAddons || []).find((a: any) => String(a.id || a._id) === String(addonId));
+                const name = addonDetails?.addonName || availAddon?.name || availAddon?.addonName || "Addon";
+                const priceVal = typeof addonDetails?.price === "number" ? addonDetails.price : (availAddon?.price || 0);
+                const rawAddonImg = addonDetails?.imageUrl || (addonDetails as any)?.image || availAddon?.imageUrl || availAddon?.image;
                 const formattedAddonImg = rawAddonImg ? formatImageUrl(rawAddonImg) : (addonId ? `/api/media/addon/${addonId}/image` : undefined);
                 if (existingIdx >= 0) {
                   const existing = newAddons[existingIdx];
@@ -988,13 +1176,18 @@ export const useStore = create<AppState>()(
                   });
                 }
               } else {
-                newAddons = newAddons.filter((a) => a.addonId !== addonId);
+                newAddons = newAddons.filter((a) => String(a.addonId) !== String(addonId));
               }
               return { ...item, selectedAddons: newAddons };
             }
             return item;
-          }),
-        }));
+          });
+
+          return {
+            cart: updatedCart,
+            ...(!state.token ? { cartPricing: calculateGuestPricing(updatedCart) } : {}),
+          };
+        });
       },
 
       // Location & Checkout Details
@@ -1636,6 +1829,17 @@ export const useStore = create<AppState>()(
         bookings: state.bookings,
         wishlist: state.wishlist,
         recentlyViewed: state.recentlyViewed,
+        cart: state.cart,
+        cartId: state.cartId,
+        cartPricing: state.cartPricing,
+        packageAddonsMap: state.packageAddonsMap,
+        selectedDate: state.selectedDate,
+        selectedTimeSlot: state.selectedTimeSlot,
+        selectedAddressId: state.selectedAddressId,
+        appliedCoupon: state.appliedCoupon,
+        bookmarkedPackageIds: state.bookmarkedPackageIds,
+        isMember: state.isMember,
+        membershipTier: state.membershipTier,
       }),
     }
   )

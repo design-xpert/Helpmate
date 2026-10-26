@@ -21,7 +21,6 @@ import {
   RotateCcw,
   Edit2,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -429,7 +428,7 @@ function LoginContent() {
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: "easeOut" }}
-        className="w-full max-w-md bg-white border border-slate-200 p-7 sm:p-9 rounded-[32px] text-left shadow-xl shadow-slate-200/60 relative z-10 space-y-6"
+        className="w-full max-w-md bg-white border border-slate-200 p-5 sm:p-9 rounded-3xl sm:rounded-[32px] text-left shadow-xl shadow-slate-200/60 relative z-10 space-y-6"
       >
         {/* Header / Logo */}
         <div className="text-center space-y-2">
@@ -628,7 +627,7 @@ function LoginContent() {
                   <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-2">
                     Enter 6-Digit Verification Code
                   </label>
-                  <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+                  <div className="flex items-center justify-between gap-1 xs:gap-1.5 sm:gap-2">
                     {otpValues.map((val, idx) => (
                       <input
                         key={idx}
@@ -643,7 +642,7 @@ function LoginContent() {
                         onChange={(e) => handleOtpChange(idx, e.target.value)}
                         onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                         disabled={isLoading}
-                        className={`w-11 h-12 sm:w-12 sm:h-13 text-center text-base sm:text-lg font-black rounded-xl sm:rounded-2xl border transition-all focus:outline-none ${
+                        className={`w-9.5 xs:w-11 sm:w-12 h-11 xs:h-12 sm:h-13 text-center text-sm xs:text-base sm:text-lg font-black rounded-xl sm:rounded-2xl border transition-all focus:outline-none ${
                           val
                             ? "bg-white border-accent-lux text-slate-900 shadow-sm ring-2 ring-accent-lux/20"
                             : "bg-slate-50 border-slate-200 text-slate-900 focus:border-accent-lux focus:bg-white"

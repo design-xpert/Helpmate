@@ -178,7 +178,7 @@ function SearchPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const { wishlist, toggleWishlist, addNotification, addToCart, cart, token, isLoggedIn } = useStore();
+  const { wishlist, toggleWishlist, addNotification, addToCart, cart, token, isLoggedIn, setPackageAddons } = useStore();
 
   // View Mode: "categories" | "trending" | "packages" | "spotlight"
   const [viewMode, setViewMode] = useState<"categories" | "trending" | "packages" | "spotlight">(() => {
@@ -434,6 +434,13 @@ function SearchPageContent() {
 
         if (isMounted && res.success) {
           setApiPackages(res.data || []);
+          if (res.data && Array.isArray(res.data)) {
+            res.data.forEach((pkgItem) => {
+              if (pkgItem.addons && pkgItem.addons.length > 0 && pkgItem.package?.id) {
+                setPackageAddons(pkgItem.package.id, pkgItem.addons, pkgItem.package.name);
+              }
+            });
+          }
           if (res.pagination) {
             setTotalPages(res.pagination.totalPages);
             setTotalItems(res.pagination.total);
@@ -543,6 +550,9 @@ function SearchPageContent() {
     if (isAlreadyInCart) return;
 
     const pkgImg = pkg.imageUrl || pkg.thumbnailUrl;
+    if (item.addons && item.addons.length > 0) {
+      setPackageAddons(pkg.id, item.addons, pkg.name);
+    }
     addToCart({
       id: pkg.id,
       itemId: pkg.id,
@@ -553,13 +563,8 @@ function SearchPageContent() {
       duration: pkg.duration || 60,
       image: pkgImg,
       imageUrl: pkgImg,
-      selectedAddons: (item.addons || []).map((a) => ({
-        addonId: a._id,
-        addonName: a.addonName,
-        price: a.price,
-        quantity: 1,
-        totalPrice: a.price,
-      })),
+      availableAddons: item.addons || [],
+      selectedAddons: [],
     });
   };
 
@@ -573,6 +578,9 @@ function SearchPageContent() {
 
     if (!isAlreadyInCart) {
       const pkgImg = pkg.imageUrl || pkg.thumbnailUrl;
+      if (item.addons && item.addons.length > 0) {
+        setPackageAddons(pkg.id, item.addons, pkg.name);
+      }
       addToCart({
         id: pkg.id,
         itemId: pkg.id,
@@ -583,13 +591,8 @@ function SearchPageContent() {
         duration: pkg.duration || 60,
         image: pkgImg,
         imageUrl: pkgImg,
-        selectedAddons: (item.addons || []).map((a) => ({
-          addonId: a._id,
-          addonName: a.addonName,
-          price: a.price,
-          quantity: 1,
-          totalPrice: a.price,
-        })),
+        availableAddons: item.addons || [],
+        selectedAddons: [],
       });
     }
 
@@ -658,7 +661,7 @@ function SearchPageContent() {
         style={{ paddingTop: "var(--header-total-height, 8.5rem)" }}
         className="flex-1 pt-32 sm:pt-36 font-sans bg-slate-50/50 dark:bg-background pb-16"
       >
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-6">
 
           {/* Top View Switcher & Title */}
           <div className="pt-2 pb-6 border-b border-slate-200/70 dark:border-slate-800">
@@ -694,13 +697,13 @@ function SearchPageContent() {
               </div>
 
               {/* View Switcher Toggle Tabs */}
-              <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-full border border-slate-200 dark:border-slate-800 self-start md:self-auto flex-wrap">
+              <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl sm:rounded-full border border-slate-200 dark:border-slate-800 self-start md:self-auto flex-wrap">
                 <button
                   onClick={() => {
                     setViewMode("categories");
                     router.push("/search?view=categories");
                   }}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[11px] sm:text-xs font-bold transition-all cursor-pointer ${
                     viewMode === "categories"
                       ? "bg-[#48073d] text-white dark:bg-accent-lux shadow-sm"
                       : "text-slate-600 dark:text-slate-300 hover:text-foreground"
@@ -714,7 +717,7 @@ function SearchPageContent() {
                     setViewMode("spotlight");
                     router.push("/search?view=spotlight");
                   }}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[11px] sm:text-xs font-bold transition-all cursor-pointer ${
                     viewMode === "spotlight"
                       ? "bg-[#48073d] text-white dark:bg-accent-lux shadow-sm"
                       : "text-slate-600 dark:text-slate-300 hover:text-foreground"
@@ -728,7 +731,7 @@ function SearchPageContent() {
                     setViewMode("trending");
                     router.push("/search?type=trending");
                   }}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[11px] sm:text-xs font-bold transition-all cursor-pointer ${
                     viewMode === "trending"
                       ? "bg-[#48073d] text-white dark:bg-accent-lux shadow-sm"
                       : "text-slate-600 dark:text-slate-300 hover:text-foreground"
@@ -742,7 +745,7 @@ function SearchPageContent() {
                     setViewMode("packages");
                     router.push("/search?view=packages");
                   }}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[11px] sm:text-xs font-bold transition-all cursor-pointer ${
                     viewMode === "packages"
                       ? "bg-[#48073d] text-white dark:bg-accent-lux shadow-sm"
                       : "text-slate-600 dark:text-slate-300 hover:text-foreground"
@@ -1055,7 +1058,7 @@ function SearchPageContent() {
                                     <ShoppingBag className="w-3 h-3" /> Go to Cart
                                   </>
                                 ) : (
-                                  "+ Cart"
+                                  "Add to Cart"
                                 )}
                               </button>
 
@@ -1289,7 +1292,7 @@ function SearchPageContent() {
                                     <ShoppingBag className="w-3 h-3" /> Go to Cart
                                   </>
                                 ) : (
-                                  "+ Cart"
+                                  "Add to Cart"
                                 )}
                               </button>
 
@@ -1733,7 +1736,7 @@ function SearchPageContent() {
                                     <div className="mt-2.5 flex flex-wrap gap-1">
                                       {item.addons.slice(0, 2).map((addon) => (
                                         <span key={addon._id} className="text-[8px] font-bold bg-accent-lux/10 text-accent-lux px-2 py-0.5 rounded-full">
-                                          +{addon.addonName} (₹{addon.price})
+                                          {addon.addonName || (addon as any).title || (addon as any).name}
                                         </span>
                                       ))}
                                       {item.addons.length > 2 && (
@@ -1785,7 +1788,7 @@ function SearchPageContent() {
                                           <ShoppingBag className="w-3 h-3" /> Go to Cart
                                         </>
                                       ) : (
-                                        "+ Cart"
+                                        "Add to Cart"
                                       )}
                                     </button>
 

@@ -764,7 +764,7 @@ export default function PricingCalculator({ onBook }: CalculatorProps) {
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="text-xs font-extrabold text-accent-lux">
-                                +₹{addon.price}
+                                ₹{addon.price}
                               </span>
                               <div
                                 className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
@@ -1219,7 +1219,7 @@ export default function PricingCalculator({ onBook }: CalculatorProps) {
                           <span className="text-slate-400">
                             Add-on Checklist ({deepAddons.length})
                           </span>
-                          <span className="font-bold text-accent-lux">+₹{deepAddonSum}</span>
+                          <span className="font-bold text-accent-lux">₹{deepAddonSum}</span>
                         </div>
                       )}
                       <div className="flex justify-between text-xs pt-3 border-t border-white/5">
@@ -1238,7 +1238,7 @@ export default function PricingCalculator({ onBook }: CalculatorProps) {
                       {choresTotalPrice > choreSum && (
                         <div className="flex justify-between text-xs text-amber-400">
                           <span>Minimum Booking Adjustment</span>
-                          <span className="font-bold">+₹{choresTotalPrice - choreSum}</span>
+                          <span className="font-bold">₹{choresTotalPrice - choreSum}</span>
                         </div>
                       )}
                       <div className="flex justify-between text-xs pt-3 border-t border-white/5">

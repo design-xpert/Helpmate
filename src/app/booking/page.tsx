@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -18,7 +18,6 @@ import {
   ChevronLeft,
   Smartphone,
   ArrowLeft,
-  Sparkles,
   ShoppingBag,
   Info,
   Home,
@@ -35,7 +34,7 @@ import {
   FileText
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useStore, Address, getItemAddonTotal } from "@/store/useStore";
+import { useStore, Address, getItemAddonTotal, extractStoredCartAddons } from "@/store/useStore";
 import Header from "@/components/common/Header";
 import Footer from "@/components/common/Footer";
 import confetti from "canvas-confetti";
@@ -47,7 +46,6 @@ import MembershipBanner from "@/components/membership/MembershipBanner";
 import { AddAddressForm } from "@/components/booking/AddAddressForm";
 import { toast } from "@/components/common/Toast";
 import { fetchScheduleAvailabilityApi } from "@/services/scheduleApi";
-import { fetchCustomerPackagesApi, fetchCustomerPackageDetailsApi } from "@/services/packageApi";
 import { formatImageUrl, getNameInitials } from "@/utils/image";
 import { CartPackageImage } from "@/components/booking/CartPackageImage";
 import { CartAddonImage } from "@/components/booking/CartAddonImage";
@@ -59,6 +57,7 @@ function BookingContent() {
 
   const {
     cart,
+    packageAddonsMap,
     addToCart,
     removeFromCart,
     cartPricing,
@@ -109,151 +108,11 @@ function BookingContent() {
   const [editingAddress, setEditingAddress] = useState<Address | null>(null);
   const [showCouponsSlider, setShowCouponsSlider] = useState(false);
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
-  const [cartPackageAddons, setCartPackageAddons] = useState<any[]>([]);
-  const [packageImageMap, setPackageImageMap] = useState<Record<string, string>>({});
-
-  // Load available package addons for items currently in cart
-  useEffect(() => {
-    let isMounted = true;
-    async function loadCartAddons() {
-      if (!cart || cart.length === 0) {
-        if (isMounted) {
-          setCartPackageAddons([]);
-          setPackageImageMap({});
-        }
-        return;
-      }
-
-      try {
-        const res = await fetchCustomerPackagesApi({ limit: 50 });
-        if (!isMounted) return;
-
-        const cartItemIds = new Set<string>();
-        const cartNames = new Set<string>();
-        cart.forEach((c) => {
-          if (c.id) cartItemIds.add(String(c.id));
-          if (c.itemId) cartItemIds.add(String(c.itemId));
-          if (c.packageId) cartItemIds.add(String(c.packageId));
-          const hexes = String(c.id || "").match(/[0-9a-fA-F]{24}/g);
-          if (hexes) hexes.forEach((h) => cartItemIds.add(h));
-          const itemHexes = String(c.itemId || "").match(/[0-9a-fA-F]{24}/g);
-          if (itemHexes) itemHexes.forEach((h) => cartItemIds.add(h));
-          const pkgHexes = String(c.packageId || "").match(/[0-9a-fA-F]{24}/g);
-          if (pkgHexes) pkgHexes.forEach((h) => cartItemIds.add(h));
-          if (c.name) cartNames.add(c.name.trim().toLowerCase());
-        });
-
-        const matchedAddons: any[] = [];
-        const seenAddonKeys = new Set<string>();
-        const matchedPkgHexes = new Set<string>();
-        const imgMap: Record<string, string> = {};
-
-        if (res.success && res.data) {
-          res.data.forEach((pkgItem: any) => {
-            const pkg = pkgItem.package || pkgItem;
-            const pkgId = String(pkg.id || pkg._id || pkgItem.id || pkgItem._id || "");
-            const pkgHex = (String(pkgId).match(/[0-9a-fA-F]{24}/) || [])[0] || "";
-            const pkgName = String(pkg.name || pkg.packageName || pkgItem.name || "").trim();
-            const pkgNameLower = pkgName.toLowerCase();
-
-            const rawImg = pkg.imageUrl || pkg.thumbnailUrl || (pkg as any).image;
-            const formatted = rawImg ? formatImageUrl(rawImg) : (pkgHex ? `/api/media/package/${pkgHex}/image` : "");
-            if (formatted) {
-              if (pkgId) imgMap[pkgId] = formatted;
-              if (pkgHex) imgMap[pkgHex] = formatted;
-              if (pkgName) imgMap[pkgName] = formatted;
-            }
-
-            const isCartMatch =
-              (pkgId && cartItemIds.has(pkgId)) ||
-              (pkgHex && cartItemIds.has(pkgHex)) ||
-              (pkgNameLower && cartNames.has(pkgNameLower)) ||
-              cart.some((c) => {
-                const cLower = (c.name || "").trim().toLowerCase();
-                return cLower && (cLower === pkgNameLower || cLower.includes(pkgNameLower) || pkgNameLower.includes(cLower));
-              });
-
-            if (isCartMatch) {
-              if (pkgHex) matchedPkgHexes.add(pkgHex);
-              if (pkgId) matchedPkgHexes.add(pkgId);
-
-              const rawAddons = pkgItem.addons || pkg.addons || (pkgItem.package && pkgItem.package.addons) || [];
-              if (Array.isArray(rawAddons)) {
-                rawAddons.forEach((addon: any) => {
-                  const aId = String(addon._id || addon.id || "");
-                  const aKey = `${pkgHex || pkgId}-${aId}`;
-                  if (aId && !seenAddonKeys.has(aKey)) {
-                    seenAddonKeys.add(aKey);
-                    matchedAddons.push({
-                      id: aId,
-                      packageId: pkgHex || pkgId,
-                      packageName: pkgName,
-                      name: addon.addonName || addon.title || addon.name || "Service Add-on",
-                      price: typeof addon.price === "number" ? addon.price : 0,
-                      description: addon.description || "",
-                      imageUrl: addon.imageUrl ? formatImageUrl(addon.imageUrl) : `/api/media/addon/${aId}/image`,
-                    });
-                  }
-                });
-              }
-            }
-          });
-        }
-
-        // Fallback: If any package in cart was not matched in the list, fetch details directly
-        for (const c of cart) {
-          const rawId = c.packageId || c.itemId || c.id;
-          const hex = (String(rawId).match(/[0-9a-fA-F]{24}/) || [])[0];
-          if (hex && !matchedPkgHexes.has(hex)) {
-            try {
-              const detailsRes = await fetchCustomerPackageDetailsApi(hex);
-              if (detailsRes.success && detailsRes.data) {
-                const p = detailsRes.data.package;
-                const pName = p?.name || c.name;
-                const pImg = p?.imageUrl ? formatImageUrl(p.imageUrl) : `/api/media/package/${hex}/image`;
-                imgMap[hex] = pImg;
-                if (pName) imgMap[pName] = pImg;
-
-                const addons = detailsRes.data.addons || [];
-                if (Array.isArray(addons)) {
-                  addons.forEach((addon: any) => {
-                    const aId = String(addon._id || addon.id || "");
-                    const aKey = `${hex}-${aId}`;
-                    if (aId && !seenAddonKeys.has(aKey)) {
-                      seenAddonKeys.add(aKey);
-                      matchedAddons.push({
-                        id: aId,
-                        packageId: hex,
-                        packageName: pName,
-                        name: addon.addonName || addon.title || addon.name || "Service Add-on",
-                        price: typeof addon.price === "number" ? addon.price : 0,
-                        description: addon.description || "",
-                        imageUrl: addon.imageUrl ? formatImageUrl(addon.imageUrl) : `/api/media/addon/${aId}/image`,
-                      });
-                    }
-                  });
-                }
-              }
-            } catch (err) {
-              console.error("Error fetching direct package details:", err);
-            }
-          }
-        }
-
-        if (isMounted) {
-          setCartPackageAddons(matchedAddons);
-          setPackageImageMap(imgMap);
-        }
-      } catch (err) {
-        console.error("Error fetching cart package addons:", err);
-      }
-    }
-
-    loadCartAddons();
-    return () => {
-      isMounted = false;
-    };
-  }, [cart]);
+  const [packageImageMap] = useState<Record<string, string>>({});
+  // Instant synchronous computation from cart & store - ZERO delay, NO API calls!
+  const cartPackageAddons = useMemo(() => {
+    return extractStoredCartAddons(cart, packageAddonsMap);
+  }, [cart, packageAddonsMap]);
 
   // Dynamic schedule availability from backend API
   const [availableDates, setAvailableDates] = useState<{ label: string; dayNum: number; fullDate: string; iso: string; available?: boolean }[]>([]);
@@ -588,13 +447,15 @@ function BookingContent() {
 
       <main 
         style={{ paddingTop: "var(--header-total-height, 8.5rem)" }}
-        className="flex-1 pt-32 sm:pt-36 font-sans bg-slate-50/50 dark:bg-background pb-20 relative overflow-hidden min-h-screen"
+        className="flex-1 pt-32 sm:pt-36 font-sans bg-slate-50/50 dark:bg-background pb-28 lg:pb-20 relative min-h-screen"
       >
         {/* Glow Effects */}
-        <div className="absolute top-24 left-1/4 -translate-x-1/2 w-96 h-96 bg-accent-lux/5 rounded-full blur-[140px] pointer-events-none" />
-        <div className="absolute bottom-48 right-1/4 translate-x-1/2 w-96 h-96 bg-accent-lux/[0.03] rounded-full blur-[140px] pointer-events-none" />
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-24 left-1/4 -translate-x-1/2 w-96 h-96 bg-accent-lux/5 rounded-full blur-[140px]" />
+          <div className="absolute bottom-48 right-1/4 translate-x-1/2 w-96 h-96 bg-accent-lux/[0.03] rounded-full blur-[140px]" />
+        </div>
 
-        <div className="max-w-7xl mx-auto px-6 relative z-10 py-6">
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 relative z-10 py-4 sm:py-6">
           {/* Header Action / Back */}
           {step < 4 && (
             <button
@@ -613,13 +474,13 @@ function BookingContent() {
             );
 
             return (
-              <div className="mb-10 max-w-3xl mx-auto">
+              <div className="mb-8 sm:mb-10 max-w-3xl mx-auto">
                 <div className="flex items-center justify-between relative">
                   {/* Connector line */}
-                  <div className="absolute left-[18px] right-[18px] top-[18px] h-0.5 bg-slate-200 dark:bg-slate-800 -translate-y-1/2 z-0" />
+                  <div className="absolute left-[14px] sm:left-[18px] right-[14px] sm:right-[18px] top-[14px] sm:top-[18px] h-0.5 bg-slate-200 dark:bg-slate-800 -translate-y-1/2 z-0" />
                   <div
-                    className="absolute left-[18px] top-[18px] h-0.5 bg-accent-lux -translate-y-1/2 transition-all duration-500 z-0"
-                    style={{ width: `calc(${(activeProgressIndex / 3) * 100}% - ${(activeProgressIndex / 3) * 36}px)` }}
+                    className="absolute left-[14px] sm:left-[18px] top-[14px] sm:top-[18px] h-0.5 bg-accent-lux -translate-y-1/2 transition-all duration-500 z-0"
+                    style={{ width: `calc(${(activeProgressIndex / 3) * 100}% - ${(activeProgressIndex / 3) * 28}px)` }}
                   />
 
                   {[
@@ -641,7 +502,7 @@ function BookingContent() {
                         title={`Go to ${s.label}`}
                       >
                         <div
-                          className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+                          className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
                             isCurrent
                               ? "bg-accent-lux border-accent-lux text-white scale-110 shadow-lg shadow-accent-lux/30 ring-4 ring-accent-lux/20 font-black"
                               : isCompleted
@@ -650,13 +511,13 @@ function BookingContent() {
                           }`}
                         >
                           {isCompleted && !isCurrent ? (
-                            <Check className="w-4 h-4 stroke-[3]" />
+                            <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[3]" />
                           ) : (
-                            <Icon className="w-4 h-4" />
+                            <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                           )}
                         </div>
                         <span
-                          className={`text-[9px] font-black uppercase tracking-wider mt-2 transition-colors duration-300 ${
+                          className={`text-[8px] sm:text-[9px] font-black uppercase tracking-wider mt-1.5 sm:mt-2 transition-colors duration-300 ${
                             isCurrent
                               ? "text-accent-lux font-black scale-105"
                               : isCompleted
@@ -685,7 +546,7 @@ function BookingContent() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -15 }}
                   transition={{ duration: 0.3 }}
-                  className="glass-panel p-6 sm:p-8 shadow-xl rounded-[32px] text-left"
+                  className="glass-panel p-4 sm:p-8 shadow-xl rounded-2xl sm:rounded-[32px] text-left"
                 >
 
                   {/* STEP 0: Cart Selection & Recommendations */}
@@ -718,7 +579,7 @@ function BookingContent() {
                                 onClick={() => router.push("/search?view=categories")}
                                 className="inline-flex items-center justify-center px-6 py-3 rounded-full bg-accent-lux hover:bg-accent-lux/95 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-accent-lux/25 transition-all cursor-pointer"
                               >
-                                + Add Services
+                                Add Services
                               </button>
                             </div>
                           </div>
@@ -757,7 +618,7 @@ function BookingContent() {
                                     <div className="text-right">
                                       <span className="text-sm font-bold text-foreground font-sans block">₹{itemBasePrice}</span>
                                       {addonTotal > 0 && (
-                                        <span className="text-[10px] font-semibold text-accent-lux font-sans block">+₹{addonTotal} addons</span>
+                                        <span className="text-[10px] font-semibold text-accent-lux font-sans block">₹{addonTotal} addons</span>
                                       )}
                                     </div>
                                     <button
@@ -796,10 +657,10 @@ function BookingContent() {
                           <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3 text-left">
                             <div className="flex items-center justify-between">
                               <span className="text-[10px] uppercase font-bold text-accent-lux tracking-wider flex items-center gap-1.5">
-                                <Sparkles className="w-3.5 h-3.5 text-accent-lux animate-pulse" /> Included Add-ons ({allAddedAddons.length})
+                                Included Add-ons ({allAddedAddons.length})
                               </span>
                               <span className="text-xs font-bold text-slate-500 font-sans">
-                                Total: +₹{addonGrandTotal}
+                                Total: ₹{addonGrandTotal}
                               </span>
                             </div>
 
@@ -822,7 +683,7 @@ function BookingContent() {
                                           {addon.addonName} {addon.quantity > 1 ? `(x${addon.quantity})` : ""}
                                         </span>
                                         <span className="text-xs font-extrabold text-accent-lux font-sans shrink-0">
-                                          +₹{addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1))}
+                                          ₹{addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1))}
                                         </span>
                                       </div>
                                       <p className="text-[10px] text-slate-400 truncate">
@@ -850,7 +711,7 @@ function BookingContent() {
                         <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2 text-left">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
-                              <Sparkles className="w-3.5 h-3.5 text-accent-lux animate-pulse" /> Popular Pairing Recommendations
+                              Popular Pairing Recommendations
                             </span>
                             <span className="text-[10px] font-semibold text-slate-400">Available Add-ons</span>
                           </div>
@@ -885,7 +746,7 @@ function BookingContent() {
                                           {addon.name}
                                         </span>
                                         <span className="text-xs font-extrabold text-accent-lux font-sans shrink-0">
-                                          +₹{addon.price}
+                                          ₹{addon.price}
                                         </span>
                                       </div>
                                       {addon.packageName && cart.length > 1 && (
@@ -921,7 +782,7 @@ function BookingContent() {
                                         : "bg-accent-lux text-white hover:bg-accent-lux/90"
                                     }`}
                                   >
-                                    {isAdded ? "Added ✓" : <>Add <Plus className="w-3 h-3" /></>}
+                                    {isAdded ? "Added ✓" : "Add"}
                                   </button>
                                 </div>
                               );
@@ -1037,7 +898,7 @@ function BookingContent() {
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: 6, scale: 0.96 }}
                                     transition={{ duration: 0.18 }}
-                                    className="absolute top-full right-0 mt-2 z-50 shadow-2xl rounded-3xl"
+                                    className="absolute top-full -right-2 sm:right-0 mt-2 z-50 shadow-2xl rounded-3xl max-w-[calc(100vw-2rem)]"
                                   >
                                     <InlineCustomDatePicker
                                       selectedDate={selectedDate}
@@ -1122,7 +983,7 @@ function BookingContent() {
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: 6, scale: 0.96 }}
                                     transition={{ duration: 0.18 }}
-                                    className="absolute bottom-full right-0 mb-2 z-50 shadow-2xl rounded-3xl"
+                                    className="absolute bottom-full -right-2 sm:right-0 mb-2 z-50 shadow-2xl rounded-3xl max-w-[calc(100vw-2rem)]"
                                   >
                                     <InlineCustomTimePicker
                                       selectedTime={selectedTimeSlot}
@@ -1483,33 +1344,6 @@ function BookingContent() {
                     </div>
                   )}
 
-                  {/* Stepper Navigation Actions */}
-                  {step < 4 && (
-                    <div className="flex justify-between items-center pt-8 border-t border-slate-100 dark:border-slate-800/80 mt-8 gap-4">
-                      {step > 0 ? (
-                        <button
-                          onClick={handlePrevStep}
-                          className="px-5 py-3 rounded-full border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-850 flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <ChevronLeft className="w-4 h-4" /> Back
-                        </button>
-                      ) : (
-                        <div />
-                      )}
-
-                      <button
-                        onClick={handleNextStep}
-                        disabled={step === 0 && cart.length === 0}
-                        className={`px-6 py-3 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-md transition-transform duration-300 ${
-                          step === 0 && cart.length === 0
-                            ? "bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none"
-                            : "bg-accent-lux hover:bg-accent-lux/95 text-white cursor-pointer hover:scale-103 active:scale-97"
-                        }`}
-                      >
-                        {step === 3 ? "Authorize & Book" : "Continue"} <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
 
                 </motion.div>
               </AnimatePresence>
@@ -1517,10 +1351,15 @@ function BookingContent() {
 
             {/* Right Sticky Summary Sidebar */}
             {step <= 4 && (
-              <div className="lg:col-span-4 lg:sticky lg:top-24 space-y-6">
-
+              <aside
+                style={{
+                  top: "calc(var(--header-total-height, 128px) + 1rem)",
+                  position: "sticky",
+                }}
+                className="lg:col-span-4 sticky top-32 z-30 self-start w-full space-y-6"
+              >
                 {/* Price Breakdown Invoice Card */}
-                <div className="glass-panel p-6 space-y-5 text-left">
+                <div className="glass-panel p-6 space-y-5 text-left rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
                   <div>
                     <h3 className="text-xs uppercase font-extrabold text-slate-400 tracking-wider">Booking Invoice</h3>
                   </div>
@@ -1534,9 +1373,9 @@ function BookingContent() {
                     {addonSubtotal > 0 && (
                       <div className="flex justify-between items-center text-accent-lux font-bold">
                         <span className="flex items-center gap-1">
-                          <Sparkles className="w-3.5 h-3.5 text-accent-lux" /> Selected Add-ons Subtotal
+                          Selected Add-ons Subtotal
                         </span>
-                        <span>+₹{addonSubtotal}</span>
+                        <span>₹{addonSubtotal}</span>
                       </div>
                     )}
 
@@ -1577,59 +1416,92 @@ function BookingContent() {
                     </div>
                   </div>
 
-                  {/* Promo Coupon Section inside Summary Card */}
-                  {/* <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Discount Coupon</span>
+                  {/* Primary Continue Action Button on Right Side */}
+                  {step < 4 && (
+                    <div className="pt-2 space-y-2">
                       <button
-                        type="button"
-                        onClick={() => setShowCouponsSlider(true)}
-                        className="text-[11px] font-extrabold text-[#782860] dark:text-purple-300 hover:underline flex items-center gap-1 cursor-pointer"
+                        onClick={handleNextStep}
+                        disabled={(step === 0 && cart.length === 0) || isSubmittingBooking}
+                        className={`w-full py-3.5 px-6 rounded-2xl text-xs uppercase tracking-wider font-extrabold flex items-center justify-center gap-2 shadow-lg transition-all duration-300 cursor-pointer ${
+                          step === 0 && cart.length === 0
+                            ? "bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none"
+                            : "bg-accent-lux hover:bg-accent-lux/95 text-white hover:scale-[1.01] active:scale-[0.99] shadow-accent-lux/25"
+                        }`}
                       >
-                        <Tag className="w-3 h-3" /> View Offers (5)
+                        {isSubmittingBooking ? (
+                          <span className="flex items-center gap-2">
+                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            Processing Booking...
+                          </span>
+                        ) : (
+                          <>
+                            {step === 3 ? "Authorize & Book" : "Continue"}
+                            <ChevronRight className="w-4 h-4" />
+                          </>
+                        )}
                       </button>
-                    </div>
 
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Enter coupon code"
-                        value={couponInput}
-                        onChange={(e) => setCouponInput(e.target.value)}
-                        className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-xl text-xs text-foreground focus:outline-none focus:border-accent-lux animate-fadeIn"
-                      />
-                      <button
-                        onClick={handleApplyCoupon}
-                        className="px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-black dark:hover:bg-slate-750 text-xs font-bold text-white cursor-pointer transition-colors"
-                      >
-                        Apply
-                      </button>
+                      {step > 0 && (
+                        <button
+                          type="button"
+                          onClick={handlePrevStep}
+                          className="w-full py-2 px-3 rounded-xl text-[11px] font-bold text-slate-500 hover:text-foreground hover:bg-slate-100 dark:hover:bg-slate-800/60 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" /> Back
+                        </button>
+                      )}
                     </div>
-                    {couponError && <p className="text-[10px] text-red-500 pl-2 animate-shake">{couponError}</p>}
-                    {appliedCoupon && (
-                      <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-3.5 py-2 rounded-xl text-[11px] font-bold animate-fadeIn">
-                        <span className="flex items-center gap-1.5"><Percent className="w-3.5 h-3.5 text-emerald-500" /> Code {appliedCoupon} Active</span>
-                        <button onClick={removeCoupon} className="hover:underline text-[10px] text-rose-500 cursor-pointer">Remove</button>
-                      </div>
-                    )}
-                  </div> */}
+                  )}
 
-                  <div className="space-y-3 text-[10px] text-slate-400 dark:text-slate-455 border-t border-slate-100 dark:border-slate-800 pt-4">
-                    <div className="flex items-center gap-2">
-                      <ShieldCheck className="w-4 h-4 text-emerald-500" /> Flat-rate guaranteed pricing
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-[#782860]" /> Arrives within the scheduling window
-                    </div>
-                  </div>
                 </div>
-
-                {/* MEMBERSHIP PROMOTIONAL CARD */}
-                {/* <MembershipBanner variant="checkout" /> */}
-              </div>
+              </aside>
             )}
           </div>
         </div>
+
+        {/* Mobile Sticky Bottom Bar (Checkout Steps 0 - 3) */}
+        {step < 4 && (
+          <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800 px-5 py-3.5 shadow-2xl flex items-center justify-between gap-4">
+            <div className="flex flex-col text-left">
+              <span className="text-[10px] uppercase font-bold text-slate-400">Total Due</span>
+              <span className="text-lg font-black text-accent-lux font-sans">₹{grandTotal}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {step > 0 && (
+                <button
+                  type="button"
+                  onClick={handlePrevStep}
+                  className="px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              )}
+
+              <button
+                onClick={handleNextStep}
+                disabled={(step === 0 && cart.length === 0) || isSubmittingBooking}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition-all cursor-pointer ${
+                  step === 0 && cart.length === 0
+                    ? "bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none"
+                    : "bg-accent-lux hover:bg-accent-lux/95 text-white shadow-accent-lux/20"
+                }`}
+              >
+                {isSubmittingBooking ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Processing...
+                  </span>
+                ) : (
+                  <>
+                    {step === 3 ? "Authorize & Book" : "Continue"}
+                    <ChevronRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Available Admin Coupons Slider / Drawer */}

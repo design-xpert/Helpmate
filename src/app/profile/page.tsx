@@ -42,8 +42,7 @@ import {
   Film,
   UploadCloud,
   ArrowLeft,
-  FileText,
-  Sparkles
+  FileText
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/common/Header";
@@ -426,13 +425,13 @@ function ProfilePageContent() {
         style={{ paddingTop: "var(--header-total-height, 8.5rem)" }}
         className="flex-1 pt-32 sm:pt-36 font-sans bg-slate-50/50 dark:bg-background pb-16"
       >
-        <div className="max-w-7xl mx-auto px-6 space-y-6">
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 space-y-4 sm:space-y-6">
           {/* Top Bar Navigation: Back Button & Breadcrumbs */}
           <div className="flex items-center justify-between pt-2">
             <button
               type="button"
               onClick={handleBack}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-extrabold shadow-sm transition-all cursor-pointer hover:border-accent-lux/40 active:scale-95"
+              className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-extrabold shadow-sm transition-all cursor-pointer hover:border-accent-lux/40 active:scale-95"
             >
               <ArrowLeft className="w-4 h-4 text-accent-lux" />
               <span>Back</span>
@@ -444,24 +443,24 @@ function ProfilePageContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 items-start">
 
           {/* Profile Navigation Sidebar */}
-          <nav className="lg:col-span-3 glass-panel p-6 space-y-2 shrink-0">
-            <div className="pb-6 border-b border-slate-100 dark:border-slate-800 text-center lg:text-left flex lg:flex-col items-center lg:items-start gap-4">
-              <div className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-accent-lux shadow-md shrink-0">
+          <nav className="lg:col-span-3 glass-panel p-4 sm:p-6 space-y-2 shrink-0 rounded-2xl sm:rounded-3xl">
+            <div className="pb-4 sm:pb-6 border-b border-slate-100 dark:border-slate-800 text-center lg:text-left flex lg:flex-col items-center lg:items-start gap-3 sm:gap-4">
+              <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-accent-lux shadow-md shrink-0">
                 <img src={avatarUrl} alt={userName} className="w-full h-full object-cover" />
               </div>
               <div>
-                <h3 className="font-bold text-base text-foreground">{userName}</h3>
-                <p className="text-[10px] text-slate-400 mt-1">{userPhone}</p>
-                <span className="inline-block mt-2 bg-gradient-to-r from-accent-lux to-secondary-lux text-white text-[8px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider">
+                <h3 className="font-bold text-sm sm:text-base text-foreground">{userName}</h3>
+                <p className="text-[10px] text-slate-400 mt-0.5 sm:mt-1">{userPhone}</p>
+                <span className="inline-block mt-1.5 sm:mt-2 bg-gradient-to-r from-accent-lux to-secondary-lux text-white text-[8px] font-extrabold px-3 py-0.5 sm:py-1 rounded-full uppercase tracking-wider">
                   Elite Member
                 </span>
               </div>
             </div>
 
-            <div className="pt-4 space-y-1">
+            <div className="pt-2 sm:pt-4 flex flex-row lg:flex-col overflow-x-auto no-scrollbar gap-1.5 sm:space-y-1 pb-1 lg:pb-0">
               {[
                 // { id: "dashboard", label: "Dashboard Overview", icon: <Award className="w-4 h-4" /> },
                 { id: "bookings", label: "Booking History", icon: <Calendar className="w-4 h-4" /> },
@@ -476,16 +475,16 @@ function ProfilePageContent() {
                     setActiveTab(tab.id);
                     router.replace(`/profile?tab=${tab.id}`, { scroll: false });
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${activeTab === tab.id
+                  className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 rounded-xl text-xs font-bold transition-all text-left cursor-pointer shrink-0 whitespace-nowrap ${activeTab === tab.id
                     ? "bg-accent-lux text-white shadow-lg shadow-accent-lux/10"
                     : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
                     }`}
                 >
-                  {tab.icon} {tab.label}
+                  {tab.icon} <span>{tab.label}</span>
                 </button>
               ))}
 
-              <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
+              <div className="hidden lg:block pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={handleBack}
@@ -1854,7 +1853,7 @@ function ProfilePageContent() {
       {/* Review Modal popup */}
       <AnimatePresence>
         {reviewingBooking && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1866,7 +1865,7 @@ function ProfilePageContent() {
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="relative w-full max-w-md glass-panel p-6 shadow-2xl flex flex-col space-y-4"
+              className="relative w-full max-w-md glass-panel p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col space-y-4 max-h-[92vh] overflow-y-auto"
             >
               <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-850">
                 <h4 className="font-bold text-sm text-foreground">Review service partner</h4>

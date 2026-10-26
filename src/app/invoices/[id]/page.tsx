@@ -10,7 +10,6 @@ import {
   ArrowLeft,
   ChevronRight,
   AlertCircle,
-  Sparkles,
   RefreshCw
 } from "lucide-react";
 import Header from "@/components/common/Header";
@@ -305,8 +304,8 @@ export default function InvoiceDetailsPage() {
                               item.selectedAddons.map((addon, aIdx) => (
                                 <tr key={`addon-${idx}-${aIdx}`} className="bg-amber-500/[0.03]">
                                   <td className="py-3 px-5 pl-10 text-left">
-                                    <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">
-                                      <Sparkles className="w-3.5 h-3.5 text-amber-500" /> + {addon.name}
+                                    <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 block">
+                                      {addon.name}
                                     </span>
                                   </td>
                                   <td className="py-3 px-5 text-center text-xs text-slate-600">

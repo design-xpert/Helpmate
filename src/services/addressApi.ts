@@ -134,20 +134,52 @@ export async function deleteCustomerAddressApi(
 }
 
 // 5. Fetch Localities
-export async function getLocalitiesApi(): Promise<AddressApiResponse<{ localities: BackendLocality[] }>> {
+export async function getLocalitiesApi(search?: string): Promise<AddressApiResponse<{ localities: BackendLocality[] }>> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/locality?limit=100`, {
+    const params = new URLSearchParams();
+    params.set("limit", "100");
+    if (search && search.trim()) {
+      params.set("search", search.trim());
+    }
+
+    const res = await fetch(`${API_BASE_URL}/api/locality?${params.toString()}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
       },
     });
-    return await res.json();
+    const json = await res.json();
+    if (json && json.success) {
+      return json;
+    }
+
+    // Fallback to /api/locality/dropdown
+    const fallbackRes = await fetch(`${API_BASE_URL}/api/locality/dropdown?${params.toString()}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    return await fallbackRes.json();
   } catch (error: any) {
-    return {
-      success: false,
-      message: error.message || "Failed to fetch localities.",
-    };
+    try {
+      const params = new URLSearchParams();
+      if (search && search.trim()) {
+        params.set("search", search.trim());
+      }
+      const fallbackRes = await fetch(`${API_BASE_URL}/api/locality/dropdown?${params.toString()}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      return await fallbackRes.json();
+    } catch {
+      return {
+        success: false,
+        message: error.message || "Failed to fetch localities.",
+      };
+    }
   }
 }
 

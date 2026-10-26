@@ -185,23 +185,23 @@ export default function Hero() {
           >
             <form
               onSubmit={handleSearchSubmit}
-              className="flex items-center p-2 rounded-[32px] bg-white dark:bg-slate-900 border border-slate-200/40 dark:border-slate-800 shadow-xl dark:shadow-slate-950/50"
+              className="flex items-center p-1.5 sm:p-2 rounded-[32px] bg-white dark:bg-slate-900 border border-slate-200/40 dark:border-slate-800 shadow-xl dark:shadow-slate-950/50"
             >
-              <div className="flex-1 flex items-center pl-4 pr-2">
-                <Search className="w-5 h-5 text-slate-400 mr-3 shrink-0" />
+              <div className="flex-1 flex items-center pl-3 sm:pl-4 pr-1 sm:pr-2 min-w-0">
+                <Search className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 mr-2 sm:mr-3 shrink-0" />
                 <input
                   type="text"
-                  placeholder="Search deep cleaning, mopping, laundry folding, AC service..."
+                  placeholder="Search cleaning, repair, salon..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-transparent text-sm text-foreground focus:outline-none placeholder-slate-400 py-3"
+                  className="w-full bg-transparent text-xs sm:text-sm text-foreground focus:outline-none placeholder-slate-400 py-2 sm:py-3 min-w-0"
                 />
               </div>
               <button
                 type="submit"
-                className="bg-primary-lux hover:bg-slate-800 text-white dark:bg-accent-lux dark:hover:bg-accent-lux/90 rounded-[24px] px-6 py-3.5 text-xs font-bold tracking-wide transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-md"
+                className="bg-primary-lux hover:bg-slate-800 text-white dark:bg-accent-lux dark:hover:bg-accent-lux/90 rounded-[24px] px-3.5 sm:px-6 py-2.5 sm:py-3.5 text-xs font-bold tracking-wide transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-md"
               >
-                Search <ArrowRight className="w-3.5 h-3.5" />
+                <span>Search</span> <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </form>
 

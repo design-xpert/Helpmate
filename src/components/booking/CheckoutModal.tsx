@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -18,7 +18,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Smartphone,
-  Sparkles,
   ShoppingBag,
   Info,
   Home,
@@ -34,7 +33,7 @@ import {
   Edit3
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useStore, Address, CartItem, getItemAddonTotal } from "@/store/useStore";
+import { useStore, Address, CartItem, getItemAddonTotal, extractStoredCartAddons } from "@/store/useStore";
 import confetti from "canvas-confetti";
 import { InlineCustomDatePicker, InlineCustomTimePicker } from "@/components/booking/CustomDateTimePickerModal";
 import { isPastDate, isPastTime, formatDuration, formatDDMMYYYY, formatScheduleDateTime } from "@/utils/dateTime";
@@ -42,7 +41,6 @@ import { AvailableCouponsSlider } from "@/components/booking/AvailableCouponsSli
 import { AddAddressForm } from "@/components/booking/AddAddressForm";
 import MembershipBanner from "@/components/membership/MembershipBanner";
 import { fetchScheduleAvailabilityApi } from "@/services/scheduleApi";
-import { fetchCustomerPackagesApi, fetchCustomerPackageDetailsApi } from "@/services/packageApi";
 import { formatImageUrl } from "@/utils/image";
 import { CartPackageImage } from "@/components/booking/CartPackageImage";
 import { CartAddonImage } from "@/components/booking/CartAddonImage";
@@ -72,6 +70,7 @@ export default function CheckoutModal({
   const router = useRouter();
   const {
     cart,
+    packageAddonsMap,
     addToCart,
     removeFromCart,
     toggleAddonInCart,
@@ -217,142 +216,11 @@ export default function CheckoutModal({
     return `${hour < 10 ? '0' : ''}${hour}:${mStr}`;
   };
 
-  const [packageImageMap, setPackageImageMap] = useState<Record<string, string>>({});
-  const [cartPackageAddons, setCartPackageAddons] = useState<any[]>([]);
-
-  useEffect(() => {
-    let isMounted = true;
-    async function loadPackageImages() {
-      if (!isOpen || !cart || cart.length === 0) return;
-      try {
-        const res = await fetchCustomerPackagesApi({ limit: 50 });
-        if (!isMounted) return;
-
-        const imgMap: Record<string, string> = {};
-        const cartItemIds = new Set<string>();
-        const cartNames = new Set<string>();
-        cart.forEach((c) => {
-          if (c.id) cartItemIds.add(String(c.id));
-          if (c.itemId) cartItemIds.add(String(c.itemId));
-          if (c.packageId) cartItemIds.add(String(c.packageId));
-          const hexes = String(c.id || "").match(/[0-9a-fA-F]{24}/g);
-          if (hexes) hexes.forEach((h) => cartItemIds.add(h));
-          const itemHexes = String(c.itemId || "").match(/[0-9a-fA-F]{24}/g);
-          if (itemHexes) itemHexes.forEach((h) => cartItemIds.add(h));
-          const pkgHexes = String(c.packageId || "").match(/[0-9a-fA-F]{24}/g);
-          if (pkgHexes) pkgHexes.forEach((h) => cartItemIds.add(h));
-          if (c.name) cartNames.add(c.name.trim().toLowerCase());
-        });
-
-        const matchedAddons: any[] = [];
-        const seenAddonKeys = new Set<string>();
-        const matchedPkgHexes = new Set<string>();
-
-        if (res.success && res.data) {
-          res.data.forEach((pkgItem: any) => {
-            const pkg = pkgItem.package || pkgItem;
-            const pkgId = String(pkg.id || pkg._id || pkgItem.id || pkgItem._id || "");
-            const pkgHex = (String(pkgId).match(/[0-9a-fA-F]{24}/) || [])[0] || "";
-            const pkgName = String(pkg.name || pkg.packageName || pkgItem.name || "").trim();
-            const pkgNameLower = pkgName.toLowerCase();
-
-            const rawImg = pkg.imageUrl || pkg.thumbnailUrl || (pkg as any).image;
-            const formatted = rawImg ? formatImageUrl(rawImg) : (pkgHex ? `/api/media/package/${pkgHex}/image` : "");
-            if (formatted) {
-              if (pkgId) imgMap[pkgId] = formatted;
-              if (pkgHex) imgMap[pkgHex] = formatted;
-              if (pkgName) imgMap[pkgName] = formatted;
-            }
-
-            const isCartMatch =
-              (pkgId && cartItemIds.has(pkgId)) ||
-              (pkgHex && cartItemIds.has(pkgHex)) ||
-              (pkgNameLower && cartNames.has(pkgNameLower)) ||
-              cart.some((c) => {
-                const cLower = (c.name || "").trim().toLowerCase();
-                return cLower && (cLower === pkgNameLower || cLower.includes(pkgNameLower) || pkgNameLower.includes(cLower));
-              });
-
-            if (isCartMatch) {
-              if (pkgHex) matchedPkgHexes.add(pkgHex);
-              if (pkgId) matchedPkgHexes.add(pkgId);
-
-              const rawAddons = pkgItem.addons || pkg.addons || (pkgItem.package && pkgItem.package.addons) || [];
-              if (Array.isArray(rawAddons)) {
-                rawAddons.forEach((addon: any) => {
-                  const aId = String(addon._id || addon.id || "");
-                  const aKey = `${pkgHex || pkgId}-${aId}`;
-                  if (aId && !seenAddonKeys.has(aKey)) {
-                    seenAddonKeys.add(aKey);
-                    matchedAddons.push({
-                      id: aId,
-                      packageId: pkgHex || pkgId,
-                      packageName: pkgName,
-                      name: addon.addonName || addon.title || addon.name || "Service Add-on",
-                      price: typeof addon.price === "number" ? addon.price : 0,
-                      description: addon.description || "",
-                      imageUrl: addon.imageUrl ? formatImageUrl(addon.imageUrl) : `/api/media/addon/${aId}/image`,
-                    });
-                  }
-                });
-              }
-            }
-          });
-        }
-
-        // Direct fallback: Fetch details by package ID if not matched in general list
-        for (const c of cart) {
-          const rawId = c.packageId || c.itemId || c.id;
-          const hex = (String(rawId).match(/[0-9a-fA-F]{24}/) || [])[0];
-          if (hex && !matchedPkgHexes.has(hex)) {
-            try {
-              const detailsRes = await fetchCustomerPackageDetailsApi(hex);
-              if (detailsRes.success && detailsRes.data) {
-                const p = detailsRes.data.package;
-                const pName = p?.name || c.name;
-                const pImg = p?.imageUrl ? formatImageUrl(p.imageUrl) : `/api/media/package/${hex}/image`;
-                imgMap[hex] = pImg;
-                if (pName) imgMap[pName] = pImg;
-
-                const addons = detailsRes.data.addons || [];
-                if (Array.isArray(addons)) {
-                  addons.forEach((addon: any) => {
-                    const aId = String(addon._id || addon.id || "");
-                    const aKey = `${hex}-${aId}`;
-                    if (aId && !seenAddonKeys.has(aKey)) {
-                      seenAddonKeys.add(aKey);
-                      matchedAddons.push({
-                        id: aId,
-                        packageId: hex,
-                        packageName: pName,
-                        name: addon.addonName || addon.title || addon.name || "Service Add-on",
-                        price: typeof addon.price === "number" ? addon.price : 0,
-                        description: addon.description || "",
-                        imageUrl: addon.imageUrl ? formatImageUrl(addon.imageUrl) : `/api/media/addon/${aId}/image`,
-                      });
-                    }
-                  });
-                }
-              }
-            } catch (err) {
-              console.error("Error fetching direct package details in CheckoutModal:", err);
-            }
-          }
-        }
-
-        if (isMounted) {
-          setPackageImageMap(imgMap);
-          setCartPackageAddons(matchedAddons);
-        }
-      } catch (err) {
-        console.error("Error loading package images in CheckoutModal:", err);
-      }
-    }
-    loadPackageImages();
-    return () => {
-      isMounted = false;
-    };
-  }, [isOpen, cart]);
+  const [packageImageMap] = useState<Record<string, string>>({});
+  // Instant synchronous computation from cart & store - ZERO delay, NO API calls!
+  const cartPackageAddons = useMemo(() => {
+    return extractStoredCartAddons(cart, packageAddonsMap);
+  }, [cart, packageAddonsMap]);
 
   // Initialize cart with current service if empty
   useEffect(() => {
@@ -578,7 +446,7 @@ export default function CheckoutModal({
         <div className="p-6 bg-slate-50/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-accent-lux/10 flex items-center justify-center text-accent-lux">
-              <Sparkles className="w-5 h-5" />
+              <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
               <h3 className="font-extrabold text-base text-foreground tracking-tight">Express Checkout</h3>
@@ -696,7 +564,7 @@ export default function CheckoutModal({
                         }}
                         className="inline-flex items-center justify-center px-6 py-3 rounded-full bg-accent-lux hover:bg-accent-lux/95 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-accent-lux/25 transition-all cursor-pointer"
                       >
-                        + Add Services
+                        Add Services
                       </button>
                     </div>
                   </div>
@@ -736,7 +604,7 @@ export default function CheckoutModal({
                             <div className="text-right">
                               <span className="text-xs font-extrabold text-foreground font-sans block">₹{itemBasePrice}</span>
                               {addonTotal > 0 && (
-                                <span className="text-[9px] font-semibold text-accent-lux font-sans block">+₹{addonTotal} addons</span>
+                                <span className="text-[9px] font-semibold text-accent-lux font-sans block">₹{addonTotal} addons</span>
                               )}
                             </div>
                             <button
@@ -775,10 +643,10 @@ export default function CheckoutModal({
                   <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2 text-left">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] uppercase font-bold text-accent-lux tracking-wider flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-accent-lux animate-pulse" /> Included Add-ons ({allAddedAddons.length})
+                        Included Add-ons ({allAddedAddons.length})
                       </span>
                       <span className="text-xs font-bold text-slate-500 font-sans">
-                        Total: +₹{addonGrandTotal}
+                        Total: ₹{addonGrandTotal}
                       </span>
                     </div>
 
@@ -801,7 +669,7 @@ export default function CheckoutModal({
                                   {addon.addonName} {addon.quantity > 1 ? `(x${addon.quantity})` : ""}
                                 </span>
                                 <span className="text-xs font-extrabold text-accent-lux font-sans shrink-0">
-                                  +₹{addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1))}
+                                  ₹{addon.totalPrice || ((addon.price || 0) * (addon.quantity || 1))}
                                 </span>
                               </div>
                               <p className="text-[10px] text-slate-400 truncate">
@@ -829,7 +697,7 @@ export default function CheckoutModal({
                 <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2 text-left">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-accent-lux animate-pulse" /> Popular Pairing Recommendations
+                      Popular Pairing Recommendations
                     </span>
                     <span className="text-[10px] font-semibold text-slate-400">Available Add-ons</span>
                   </div>
@@ -864,7 +732,7 @@ export default function CheckoutModal({
                                   {addon.name}
                                 </span>
                                 <span className="text-xs font-extrabold text-accent-lux font-sans shrink-0">
-                                  +₹{addon.price}
+                                  ₹{addon.price}
                                 </span>
                               </div>
                               {addon.packageName && cart.length > 1 && (
@@ -898,7 +766,7 @@ export default function CheckoutModal({
                                 : "bg-accent-lux text-white hover:bg-accent-lux/90"
                             }`}
                           >
-                            {isAdded ? "Added ✓" : <>Add <Plus className="w-3 h-3" /></>}
+                            {isAdded ? "Added ✓" : "Add"}
                           </button>
                         </div>
                       );

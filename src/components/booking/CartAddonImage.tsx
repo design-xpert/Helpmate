@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { formatImageUrl, getNameInitials } from "@/utils/image";
-import { Sparkles } from "lucide-react";
 
 interface CartAddonImageProps {
   src?: string;

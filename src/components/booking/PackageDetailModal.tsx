@@ -16,7 +16,8 @@ import {
   Award,
   Layers,
   HeartHandshake,
-  ShoppingBag
+  ShoppingBag,
+  Plus
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -57,10 +58,36 @@ export default function PackageDetailModal({
   const [imgError, setImgError] = useState(false);
   const [fullDetails, setFullDetails] = useState<CustomerPackageDetailsData | null>(null);
   const token = useStore((state) => state.token);
+  const setPackageAddons = useStore((state) => state.setPackageAddons);
+  const cart = useStore((state) => state.cart);
+  const toggleAddonInCart = useStore((state) => state.toggleAddonInCart);
+  const addNotification = useStore((state) => state.addNotification);
+  const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const pkgId = packageItem?.id || packageItem?._id;
+  const cartItem = cart.find(
+    (c) =>
+      (pkgId && (String(c.id) === String(pkgId) || String(c.itemId) === String(pkgId))) ||
+      (packageItem?._id && (String(c.id) === String(packageItem._id) || String(c.itemId) === String(packageItem._id))) ||
+      (packageItem?.id && (String(c.id) === String(packageItem.id) || String(c.itemId) === String(packageItem.id)))
+  );
+
+  // Sync selected addon IDs from cart or reset on new package
+  useEffect(() => {
+    if (isOpen && packageItem) {
+      if (cartItem && Array.isArray(cartItem.selectedAddons) && cartItem.selectedAddons.length > 0) {
+        setSelectedAddonIds(cartItem.selectedAddons.map((a: any) => String(a.addonId || a.id || a._id)));
+      } else {
+        setSelectedAddonIds([]);
+      }
+    } else {
+      setSelectedAddonIds([]);
+    }
+  }, [isOpen, pkgId]);
 
   // Prevent background body scrolling with smooth lock
   useEffect(() => {
@@ -87,13 +114,16 @@ export default function PackageDetailModal({
   // Fetch complete details from backend if package ID is a valid MongoDB ObjectId
   useEffect(() => {
     let isCancelled = false;
-    const pkgId = packageItem?.id || packageItem?._id;
+    const targetPkgId = packageItem?.id || packageItem?._id;
 
-    if (isOpen && pkgId && /^[0-9a-fA-F]{24}$/.test(pkgId)) {
-      fetchCustomerPackageDetailsApi(pkgId, token || undefined)
+    if (isOpen && targetPkgId && /^[0-9a-fA-F]{24}$/.test(targetPkgId)) {
+      fetchCustomerPackageDetailsApi(targetPkgId, token || undefined)
         .then((res) => {
           if (!isCancelled && res.success && res.data) {
             setFullDetails(res.data);
+            if (res.data.addons && res.data.addons.length > 0) {
+              setPackageAddons(targetPkgId, res.data.addons, res.data.package?.name || packageItem?.name);
+            }
           }
         })
         .catch((err) => {
@@ -110,7 +140,6 @@ export default function PackageDetailModal({
 
   if (!mounted || !isOpen || !packageItem) return null;
 
-  const pkgId = packageItem.id || packageItem._id;
   const name = packageItem.name || packageItem.packageName || "Package Details";
   const price = packageItem.price || 0;
   const originalPrice = packageItem.originalPrice || fullDetails?.package?.originalPrice;
@@ -167,6 +196,42 @@ export default function PackageDetailModal({
       : packageItem.addons && packageItem.addons.length > 0
       ? packageItem.addons
       : [];
+
+  // Addon selection and dynamic total calculations
+  const basePrice = Number(price) || 0;
+  const selectedAddonsTotal = addons
+    .filter((a: any) => selectedAddonIds.includes(String(a._id || a.id)))
+    .reduce((sum: number, a: any) => sum + (Number(a.price) || 0), 0);
+  const currentTotal = basePrice + selectedAddonsTotal;
+
+  const handleToggleAddon = async (addon: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const addonId = String(addon._id || addon.id);
+    const isSelected = selectedAddonIds.includes(addonId);
+    const action = isSelected ? "remove" : "add";
+
+    const nextSelected = isSelected
+      ? selectedAddonIds.filter((id) => id !== addonId)
+      : [...selectedAddonIds, addonId];
+
+    setSelectedAddonIds(nextSelected);
+
+    if (cartItem && pkgId) {
+      const addonName = addon.addonName || addon.title || addon.name || "Add-on";
+      const addonPrice = Number(addon.price) || 0;
+      const addonImg = addon.imageUrl || addon.image;
+      await toggleAddonInCart(pkgId, addonId, action, {
+        addonName,
+        price: addonPrice,
+        imageUrl: addonImg,
+      });
+      addNotification?.(
+        action === "add" ? "Add-on Added" : "Add-on Removed",
+        action === "add" ? `"${addonName}" added to package.` : `"${addonName}" removed from package.`,
+        "info"
+      );
+    }
+  };
 
   const initials = getNameInitials(name, "P");
 
@@ -326,23 +391,27 @@ export default function PackageDetailModal({
                     )}
                   </div>
 
-                  {/* Pricing Box */}
+                  {/* Pricing Box with Dynamic Addon Total */}
                   <div className="sm:text-right shrink-0 bg-slate-50 dark:bg-slate-800/50 sm:bg-transparent sm:dark:bg-transparent p-2.5 sm:p-0 rounded-xl flex sm:flex-col items-center sm:items-end justify-between sm:justify-start">
                     <div className="flex items-baseline justify-end gap-1.5">
                       <span className="text-2xl sm:text-3xl font-black text-accent-lux font-sans">
-                        ₹{price}
+                        ₹{currentTotal}
                       </span>
-                      {originalPrice && originalPrice > price && (
+                      {originalPrice && originalPrice > basePrice && (
                         <span className="text-xs sm:text-sm font-normal text-slate-400 line-through font-sans">
-                          ₹{originalPrice}
+                          ₹{originalPrice + selectedAddonsTotal}
                         </span>
                       )}
                     </div>
-                    {discount && (
+                    {selectedAddonIds.length > 0 ? (
+                      <span className="inline-block px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-450 font-bold text-[10px] tracking-wide mt-0.5 sm:mt-1">
+                        Base ₹{basePrice} + ₹{selectedAddonsTotal} add-on{selectedAddonIds.length > 1 ? "s" : ""}
+                      </span>
+                    ) : discount ? (
                       <span className="inline-block px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-450 font-bold text-[10px] uppercase tracking-wider mt-0.5 sm:mt-1">
                         {discount}% OFF
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -370,7 +439,7 @@ export default function PackageDetailModal({
                 </p>
               </div>
 
-              {/* Inclusions & Exclusions (2-Column Grid on Tablet/Desktop for Wide Form Factor) */}
+              {/* Inclusions & Exclusions */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 {/* Inclusions */}
                 <div className="p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-800/40 space-y-2.5">
@@ -403,36 +472,85 @@ export default function PackageDetailModal({
                 </div>
               </div>
 
-              {/* Addons List if present (2-Column Grid on wide modal) */}
+              {/* Addons List with Selectable Options */}
               {addons && addons.length > 0 && (
                 <div className="space-y-2.5 pt-1">
-                  <h3 className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-accent-lux" /> Available Add-ons
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[10px] uppercase font-extrabold text-slate-400 tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-accent-lux" /> Available Add-ons
+                    </h3>
+                    {selectedAddonIds.length > 0 ? (
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                        {selectedAddonIds.length} added (+₹{selectedAddonsTotal})
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-400">
+                        Click Add to include in package
+                      </span>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {addons.map((addon: any) => (
-                      <div
-                        key={addon._id || addon.id}
-                        className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800 flex items-center justify-between gap-2.5 text-xs hover:border-accent-lux/30 transition-colors"
-                      >
-                        <div className="min-w-0 pr-2">
-                          <p className="font-bold text-xs text-foreground truncate">
-                            {addon.addonName || addon.title || addon.name}
-                          </p>
-                          {addon.description && (
-                            <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{addon.description}</p>
-                          )}
+                    {addons.map((addon: any) => {
+                      const aId = String(addon._id || addon.id);
+                      const isSelected = selectedAddonIds.includes(aId);
+                      const aName = addon.addonName || addon.title || addon.name || "Add-on";
+                      const aPrice = Number(addon.price) || 0;
+                      const aDesc = addon.description || "";
+
+                      return (
+                        <div
+                          key={aId}
+                          onClick={(e) => handleToggleAddon(addon, e)}
+                          className={`p-3 rounded-2xl border flex items-center justify-between gap-3 text-xs transition-all cursor-pointer select-none ${
+                            isSelected
+                              ? "bg-accent-lux/[0.04] dark:bg-accent-lux/[0.08] border-accent-lux shadow-xs ring-1 ring-accent-lux/30"
+                              : "bg-slate-50 dark:bg-slate-800/50 border-slate-200/70 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+                          }`}
+                        >
+                          <div className="min-w-0 pr-1 flex-1">
+                            <p className={`font-bold text-xs truncate ${isSelected ? "text-accent-lux" : "text-foreground"}`}>
+                              {aName}
+                            </p>
+                            {aDesc && (
+                              <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                                {aDesc}
+                              </p>
+                            )}
+                            <span className="font-extrabold text-accent-lux text-xs font-sans mt-1 inline-block">
+                              +₹{aPrice}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => handleToggleAddon(addon, e)}
+                            className={`px-3 py-1.5 rounded-full font-bold text-[11px] shrink-0 transition-all active:scale-95 cursor-pointer flex items-center gap-1 shadow-2xs ${
+                              isSelected
+                                ? "bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold"
+                                : "bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 hover:border-accent-lux text-foreground hover:text-accent-lux"
+                            }`}
+                          >
+                            {isSelected ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                                <span>Added</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Add</span>
+                              </>
+                            )}
+                          </button>
                         </div>
-                        <span className="font-extrabold text-accent-lux shrink-0 text-xs">
-                          +₹{addon.price}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              {/* Helpmate Trust Guarantees (Spacious 4-column strip) */}
+              {/* Helpmate Trust Guarantees */}
               <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                   <div className="space-y-1 p-2 rounded-xl bg-white/60 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800">
@@ -459,15 +577,29 @@ export default function PackageDetailModal({
               </div>
             </div>
 
-            {/* Sticky Bottom Action Footer */}
+            {/* Sticky Bottom Action Footer with Dynamic Total & Addon Breakdown */}
             <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex items-center justify-between gap-3 sticky bottom-0 z-20">
               <div className="flex flex-col text-left">
-                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                  Total Package Price
-                </span>
-                <span className="text-2xl sm:text-3xl font-black text-accent-lux font-sans leading-none mt-0.5">
-                  ₹{price}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                    Total Package Price
+                  </span>
+                  {selectedAddonIds.length > 0 && (
+                    <span className="text-[9px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded-full">
+                      +{selectedAddonIds.length} add-on{selectedAddonIds.length > 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-2xl sm:text-3xl font-black text-accent-lux font-sans leading-none">
+                    ₹{currentTotal}
+                  </span>
+                  {selectedAddonIds.length > 0 && (
+                    <span className="text-[11px] text-slate-400 font-semibold font-sans">
+                      (₹{basePrice} + ₹{selectedAddonsTotal})
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-2.5 sm:gap-3">
@@ -479,7 +611,33 @@ export default function PackageDetailModal({
                       router.push("/booking");
                       return;
                     }
-                    onAddToCart(e, packageItem);
+
+                    const selectedAddonsList = addons
+                      .filter((a: any) => selectedAddonIds.includes(String(a._id || a.id)))
+                      .map((a: any) => {
+                        const aId = String(a._id || a.id);
+                        const aName = a.addonName || a.title || a.name || "Add-on";
+                        const aPrice = Number(a.price) || 0;
+                        return {
+                          addonId: aId,
+                          id: aId,
+                          addonName: aName,
+                          name: aName,
+                          price: aPrice,
+                          quantity: 1,
+                          totalPrice: aPrice,
+                          imageUrl: a.imageUrl || a.image,
+                          image: a.imageUrl || a.image,
+                        };
+                      });
+
+                    const itemWithAddons = {
+                      ...packageItem,
+                      addons: (fullDetails?.addons && fullDetails.addons.length > 0) ? fullDetails.addons : packageItem.addons,
+                      availableAddons: (fullDetails?.addons && fullDetails.addons.length > 0) ? fullDetails.addons : packageItem.addons,
+                      selectedAddons: selectedAddonsList,
+                    };
+                    onAddToCart(e, itemWithAddons);
                   }}
                   className={`px-4 sm:px-5 py-2.5 rounded-full font-bold text-xs sm:text-sm transition-all active:scale-95 border shadow-xs cursor-pointer flex items-center gap-1.5 ${
                     isAdded
@@ -498,7 +656,34 @@ export default function PackageDetailModal({
 
                 <button
                   type="button"
-                  onClick={(e) => onBookNow(e, packageItem)}
+                  onClick={(e) => {
+                    const selectedAddonsList = addons
+                      .filter((a: any) => selectedAddonIds.includes(String(a._id || a.id)))
+                      .map((a: any) => {
+                        const aId = String(a._id || a.id);
+                        const aName = a.addonName || a.title || a.name || "Add-on";
+                        const aPrice = Number(a.price) || 0;
+                        return {
+                          addonId: aId,
+                          id: aId,
+                          addonName: aName,
+                          name: aName,
+                          price: aPrice,
+                          quantity: 1,
+                          totalPrice: aPrice,
+                          imageUrl: a.imageUrl || a.image,
+                          image: a.imageUrl || a.image,
+                        };
+                      });
+
+                    const itemWithAddons = {
+                      ...packageItem,
+                      addons: (fullDetails?.addons && fullDetails.addons.length > 0) ? fullDetails.addons : packageItem.addons,
+                      availableAddons: (fullDetails?.addons && fullDetails.addons.length > 0) ? fullDetails.addons : packageItem.addons,
+                      selectedAddons: selectedAddonsList,
+                    };
+                    onBookNow(e, itemWithAddons);
+                  }}
                   className="px-5 sm:px-7 py-2.5 rounded-full bg-accent-lux hover:bg-accent-lux/95 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-accent-lux/25 transition-all cursor-pointer flex items-center gap-1.5 relative overflow-hidden"
                 >
                   <span>Book Now</span>
