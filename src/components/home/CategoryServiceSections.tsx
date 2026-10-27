@@ -123,9 +123,9 @@ function SectionRow({ section }: { section: CategorySectionData }) {
           onScroll={checkScroll}
           className="flex gap-4 sm:gap-6 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory py-2"
         >
-          {section.services.map((service) => (
+          {section.services.map((service, sIdx) => (
             <div
-              key={service.id}
+              key={`${service.id}-${sIdx}`}
               onClick={() => {
                 startTopLoader();
                 router.push(service.targetUrl);
@@ -277,8 +277,8 @@ export default function CategoryServiceSections() {
             </div>
           </div>
         ) : (
-          sections.map((section) => (
-            <SectionRow key={section.id} section={section} />
+          sections.map((section, secIdx) => (
+            <SectionRow key={`${section.id}-${secIdx}`} section={section} />
           ))
         )}
       </div>

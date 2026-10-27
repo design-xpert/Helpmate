@@ -87,41 +87,35 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
 
         if (res && res.success) {
           const rawList: any[] = res.data?.localities || (Array.isArray(res.data) ? res.data : []) || (res as any).localities || [];
+          const seen = new Set<string>();
           const mapped = rawList
             .filter((loc) => loc.status !== false)
             .map((loc) => ({
               id: String(loc._id || loc.id),
               name: loc.localityName || loc.name || "Locality",
               pincode: loc.pincode || "",
-            }));
+            }))
+            .filter((loc) => {
+              if (!loc.id || seen.has(loc.id)) return false;
+              seen.add(loc.id);
+              return true;
+            });
 
           allLocalitiesRef.current = mapped;
           setLocalities(mapped);
 
-          if (mapped.length > 0) {
-            if (!initialData?.locality) {
-              setLocality(mapped[0].name);
-              setLocalityId(mapped[0].id);
-              if (!initialData?.pincode && mapped[0].pincode) {
-                setPincode(mapped[0].pincode);
+          if (mapped.length > 0 && initialData?.locality) {
+            const match = mapped.find(
+              (m) =>
+                m.name.toLowerCase() === initialData.locality?.toLowerCase() ||
+                m.id === initialData.localityId
+            );
+            if (match) {
+              setLocality(match.name);
+              setLocalityId(match.id);
+              if (!initialData?.pincode && match.pincode) {
+                setPincode(match.pincode);
               }
-            } else {
-              const match = mapped.find(
-                (m) => m.name.toLowerCase() === initialData.locality?.toLowerCase() || m.id === initialData.localityId
-              );
-              if (match) {
-                setLocality(match.name);
-                setLocalityId(match.id);
-                if (!initialData?.pincode && match.pincode) {
-                  setPincode(match.pincode);
-                }
-              }
-            }
-          } else {
-            // No active zones returned from server
-            if (!initialData?.locality) {
-              setLocality("");
-              setLocalityId("");
             }
           }
         } else {
@@ -234,13 +228,19 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
             (Array.isArray(res.data) ? res.data : []) ||
             (res as any).localities ||
             [];
+          const seenSearch = new Set<string>();
           const mapped = rawList
             .filter((loc) => loc.status !== false)
             .map((loc) => ({
               id: String(loc._id || loc.id),
               name: loc.localityName || loc.name || "Locality",
               pincode: loc.pincode || "",
-            }));
+            }))
+            .filter((loc) => {
+              if (!loc.id || seenSearch.has(loc.id)) return false;
+              seenSearch.add(loc.id);
+              return true;
+            });
           setLocalities(mapped);
         }
       } catch (err) {
@@ -316,7 +316,7 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
       cleanPin.length === 6
         ? cleanPin
         : localities.find((l) => l.id === localityId || l.name.toLowerCase() === locality.toLowerCase())?.pincode ||
-          "221010";
+        "221010";
 
     const cleanPhone = (recipientPhone || "").trim().replace(/\D/g, "");
     if (recipientType !== "Self") {
@@ -377,11 +377,10 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
               }
             }}
             disabled={isLoadingLocalities}
-            className={`w-full bg-slate-50 dark:bg-slate-800/80 border text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
-              isLocalityDropdownOpen
+            className={`w-full bg-slate-50 dark:bg-slate-800/80 border text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${isLocalityDropdownOpen
                 ? "border-[#782860] ring-2 ring-[#782860]/20 bg-white dark:bg-slate-900"
                 : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
-            }`}
+              }`}
           >
             <div className="flex items-center gap-2 min-w-0 flex-1 truncate">
               <MapPin className="w-3.5 h-3.5 text-[#782860] shrink-0" />
@@ -404,9 +403,8 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
             </div>
 
             <ChevronDown
-              className={`w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${
-                isLocalityDropdownOpen ? "rotate-180 text-[#782860]" : ""
-              }`}
+              className={`w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${isLocalityDropdownOpen ? "rotate-180 text-[#782860]" : ""
+                }`}
             />
           </button>
 
@@ -466,18 +464,17 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
                       {localitySearch ? `No locality found matching "${localitySearch}"` : "No matching locality found"}
                     </div>
                   ) : (
-                    filteredLocalities.map((loc) => {
+                    filteredLocalities.map((loc, lIdx) => {
                       const isSelected = loc.name.toLowerCase() === locality.toLowerCase() || loc.id === localityId;
                       return (
                         <button
-                          key={loc.id}
+                          key={`${loc.id}-${lIdx}`}
                           type="button"
                           onClick={() => selectLocality(loc)}
-                          className={`w-full px-2.5 py-2 rounded-xl text-xs font-semibold text-left transition-all flex items-center justify-between gap-2 cursor-pointer ${
-                            isSelected
+                          className={`w-full px-2.5 py-2 rounded-xl text-xs font-semibold text-left transition-all flex items-center justify-between gap-2 cursor-pointer ${isSelected
                               ? "bg-[#782860]/10 text-[#782860] dark:text-purple-300 font-bold"
                               : "text-foreground hover:bg-slate-100 dark:hover:bg-slate-800"
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-2 truncate min-w-0">
                             <span className="truncate">{loc.name}</span>
@@ -561,11 +558,10 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
                     setTag(t);
                   }
                 }}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  isSelected
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${isSelected
                     ? "bg-[#782860] text-white shadow-xs"
                     : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-[#782860]/40"
-                }`}
+                  }`}
               >
                 {t === "Home" ? <Home className="w-3 h-3" /> : t === "Work" ? <Briefcase className="w-3 h-3" /> : <Building className="w-3 h-3" />}
                 {t}
@@ -600,11 +596,10 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
                 key={b.type}
                 type="button"
                 onClick={() => handleRecipientTypeSelect(b.type)}
-                className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
-                  isSelected
+                className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 ${isSelected
                     ? "bg-[#782860] text-white shadow-xs"
                     : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-[#782860]/40"
-                }`}
+                  }`}
               >
                 <Icon className="w-3 h-3 shrink-0" />
                 <span>{b.label}</span>

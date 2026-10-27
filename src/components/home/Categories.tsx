@@ -175,12 +175,12 @@ export default function Categories() {
           className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5 sm:gap-4"
         >
           <AnimatePresence mode="popLayout">
-            {visibleCategories.map((cat) => {
+            {visibleCategories.map((cat, idx) => {
               const catId = cat._id || cat.id;
               const isNavigating = navigatingCatId === catId;
               return (
                 <motion.div
-                  key={catId}
+                  key={`${catId}-${idx}`}
                   variants={itemVariants}
                   initial="hidden"
                   animate="show"

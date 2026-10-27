@@ -31,7 +31,9 @@ import {
   HeartHandshake,
   Edit3,
   X,
-  FileText
+  FileText,
+  AlertTriangle,
+  MapPinOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useStore, Address, getItemAddonTotal, extractStoredCartAddons } from "@/store/useStore";
@@ -49,6 +51,11 @@ import { fetchScheduleAvailabilityApi } from "@/services/scheduleApi";
 import { formatImageUrl, getNameInitials } from "@/utils/image";
 import { CartPackageImage } from "@/components/booking/CartPackageImage";
 import { CartAddonImage } from "@/components/booking/CartAddonImage";
+import { 
+  getServiceableLocalities, 
+  isAddressWithinServiceableZone, 
+  ServiceableLocality 
+} from "@/services/locationService";
 
 function BookingContent() {
   const router = useRouter();
@@ -106,6 +113,24 @@ function BookingContent() {
   const [couponError, setCouponError] = useState("");
   const [showAddAddress, setShowAddAddress] = useState(false);
   const [editingAddress, setEditingAddress] = useState<Address | null>(null);
+  const [activeLocalities, setActiveLocalities] = useState<ServiceableLocality[]>([]);
+
+  useEffect(() => {
+    getServiceableLocalities().then((list) => {
+      if (list && list.length > 0) {
+        setActiveLocalities(list);
+      }
+    });
+  }, []);
+
+  const selectedAddress = useMemo(() => {
+    return addresses.find((a) => a.id === selectedAddressId) || null;
+  }, [addresses, selectedAddressId]);
+
+  const isSelectedAddressServiceable = useMemo(() => {
+    if (!selectedAddress) return true;
+    return isAddressWithinServiceableZone(selectedAddress, activeLocalities);
+  }, [selectedAddress, activeLocalities]);
   const [showCouponsSlider, setShowCouponsSlider] = useState(false);
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   const [packageImageMap] = useState<Record<string, string>>({});
@@ -300,12 +325,20 @@ function BookingContent() {
       toast.error("Address Required", "Please select or add a service address to proceed.");
       return;
     }
+    if (step === 2 && !isSelectedAddressServiceable) {
+      toast.error("Outside Service Zone", "Service available only in Varanasi. Please select a Varanasi address.");
+      return;
+    }
     if (step < 3) {
       setStep(step + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
       if (!token || !isLoggedIn) {
         toast.error("Sign In Required", "Please sign in or create an account to book a service.");
+        return;
+      }
+      if (!isSelectedAddressServiceable) {
+        toast.error("Outside Service Zone", "Service available only in Varanasi. Please select a Varanasi address.");
         return;
       }
       // Create final booking via API
@@ -343,7 +376,7 @@ function BookingContent() {
   const isStepCompleted = (idx: number): boolean => {
     if (idx === 0) return cart.length > 0;
     if (idx === 1) return isStepCompleted(0) && Boolean(selectedDate && selectedTimeSlot);
-    if (idx === 2) return isStepCompleted(1) && Boolean((token || isLoggedIn) && selectedAddressId && addresses.some((a) => a.id === selectedAddressId));
+    if (idx === 2) return isStepCompleted(1) && Boolean((token || isLoggedIn) && selectedAddressId && isSelectedAddressServiceable && addresses.some((a) => a.id === selectedAddressId));
     if (idx === 3) return step === 4;
     return false;
   };
@@ -380,6 +413,12 @@ function BookingContent() {
       }
       if (!selectedAddressId) {
         toast.error("Address Required", "Please select or add a service address to proceed.");
+        setStep(2);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      if (!isSelectedAddressServiceable) {
+        toast.error("Outside Service Zone", "Service available only in Varanasi. Please select a Varanasi address.");
         setStep(2);
         window.scrollTo({ top: 0, behavior: "smooth" });
         return;
@@ -584,7 +623,7 @@ function BookingContent() {
                             </div>
                           </div>
                         ) : (
-                          cart.map((item) => {
+                          cart.map((item, idx) => {
                             const addonTotal = (item.selectedAddons || []).reduce(
                               (sum, a) => sum + (a.totalPrice || ((a.price || 0) * (a.quantity || 1))),
                               0
@@ -598,7 +637,7 @@ function BookingContent() {
 
                             return (
                               <div
-                                key={item.id}
+                                key={`${item.id}-${idx}`}
                                 className="p-4 sm:p-5 bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-3"
                               >
                                 <div className="flex justify-between items-center gap-3.5 sm:gap-4">
@@ -1119,14 +1158,15 @@ function BookingContent() {
 
                           {/* Existing Address Cards Grid */}
                           <div className="space-y-3">
-                            {addresses.map((addr) => {
+                            {addresses.map((addr, idx) => {
                               const isSelected = selectedAddressId === addr.id;
+                              const isAddrServiceable = isAddressWithinServiceableZone(addr, activeLocalities);
                               const TagIcon = addr.tag.toLowerCase().includes("work") || addr.tag.toLowerCase().includes("office") ? Briefcase : addr.tag.toLowerCase().includes("home") ? Home : Building;
                               const RecipientIcon = addr.recipientType === "Family Member" ? Users : addr.recipientType === "Friend / Neighbor" ? HeartHandshake : addr.recipientType === "Office / Work" ? Briefcase : User;
 
                               return (
                                 <div
-                                  key={addr.id}
+                                  key={`${addr.id}-${idx}`}
                                   onClick={() => setSelectedAddressId(addr.id)}
                                   className={`p-5 rounded-2xl border cursor-pointer transition-all duration-300 flex items-start justify-between gap-4 select-none ${isSelected
                                       ? "border-[#782860] bg-gradient-to-r from-[#782860]/5 via-purple-500/5 to-transparent shadow-md ring-2 ring-[#782860]/30 scale-[1.01]"
@@ -1159,6 +1199,12 @@ function BookingContent() {
                                           <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 font-mono">
                                             <MapPin className="w-3 h-3" />
                                             {addr.locality} ({addr.pincode || "Varanasi"})
+                                          </span>
+                                        )}
+
+                                        {!isAddrServiceable && (
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40">
+                                            <AlertTriangle className="w-3 h-3 text-rose-600 dark:text-rose-400" /> Outside Service Zone
                                           </span>
                                         )}
                                       </div>
@@ -1208,6 +1254,21 @@ function BookingContent() {
                               );
                             })}
                           </div>
+
+                          {/* Warning Banner if selected address is outside of serviceable zone */}
+                          {selectedAddress && !isSelectedAddressServiceable && (
+                            <div className="p-4 sm:p-4.5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-3 shadow-xs mt-3">
+                              <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                              <div className="space-y-0.5 text-left">
+                                <p className="font-extrabold text-sm text-amber-900 dark:text-amber-100">
+                                  Outside of Serviceable Zone
+                                </p>
+                                <p className="leading-relaxed text-amber-800 dark:text-amber-300">
+                                  Service available only in Varanasi. The selected address ({selectedAddress.locality || selectedAddress.city} {selectedAddress.pincode ? `- ${selectedAddress.pincode}` : ""}) is outside our active delivery network. Please choose or add a Varanasi address.
+                                </p>
+                              </div>
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -1221,6 +1282,38 @@ function BookingContent() {
                           <CreditCard className="w-5 h-5 text-accent-lux" /> Complete Secure Checkout
                         </h2>
                       </div>
+
+                      {/* Outside Serviceable Zone Alert on Checkout Page */}
+                      {!isSelectedAddressServiceable && selectedAddress && (
+                        <div className="p-4 sm:p-5 rounded-2xl bg-rose-500/10 border-2 border-rose-500/30 text-rose-700 dark:text-rose-400 flex items-start gap-3.5 shadow-sm">
+                          <div className="w-10 h-10 rounded-xl bg-rose-500/15 flex items-center justify-center shrink-0 mt-0.5">
+                            <MapPinOff className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                          </div>
+                          <div className="space-y-1 text-left flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-extrabold text-sm text-rose-700 dark:text-rose-300">
+                                Outside of Serviceable Zone
+                              </h4>
+                              <span className="px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-black uppercase tracking-wider">
+                                Service Available Only in Varanasi
+                              </span>
+                            </div>
+                            <p className="text-xs text-rose-600/90 dark:text-rose-300/90 leading-relaxed">
+                              HelpMate currently delivers verified luxury home services only across Varanasi. Your selected address (<strong>{selectedAddress.locality || selectedAddress.city} {selectedAddress.pincode ? `- ${selectedAddress.pincode}` : ""}</strong>) cannot be serviced.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStep(2);
+                                window.scrollTo({ top: 0, behavior: "smooth" });
+                              }}
+                              className="mt-2 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
+                            >
+                              <MapPin className="w-3.5 h-3.5" /> Change to a Varanasi Address
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Payment Options List */}
                       <div className="space-y-3">
@@ -1421,10 +1514,12 @@ function BookingContent() {
                     <div className="pt-2 space-y-2">
                       <button
                         onClick={handleNextStep}
-                        disabled={(step === 0 && cart.length === 0) || isSubmittingBooking}
+                        disabled={(step === 0 && cart.length === 0) || isSubmittingBooking || (step >= 2 && !isSelectedAddressServiceable)}
                         className={`w-full py-3.5 px-6 rounded-2xl text-xs uppercase tracking-wider font-extrabold flex items-center justify-center gap-2 shadow-lg transition-all duration-300 cursor-pointer ${
-                          step === 0 && cart.length === 0
+                          (step === 0 && cart.length === 0)
                             ? "bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none"
+                            : step >= 2 && !isSelectedAddressServiceable
+                            ? "bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-800/60 cursor-not-allowed shadow-none"
                             : "bg-accent-lux hover:bg-accent-lux/95 text-white hover:scale-[1.01] active:scale-[0.99] shadow-accent-lux/25"
                         }`}
                       >
@@ -1433,6 +1528,8 @@ function BookingContent() {
                             <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             Processing Booking...
                           </span>
+                        ) : step >= 2 && !isSelectedAddressServiceable ? (
+                          "Outside Service Zone (Varanasi Only)"
                         ) : (
                           <>
                             {step === 3 ? "Authorize & Book" : "Continue"}
@@ -1480,10 +1577,12 @@ function BookingContent() {
 
               <button
                 onClick={handleNextStep}
-                disabled={(step === 0 && cart.length === 0) || isSubmittingBooking}
+                disabled={(step === 0 && cart.length === 0) || isSubmittingBooking || (step >= 2 && !isSelectedAddressServiceable)}
                 className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition-all cursor-pointer ${
-                  step === 0 && cart.length === 0
+                  (step === 0 && cart.length === 0)
                     ? "bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none"
+                    : step >= 2 && !isSelectedAddressServiceable
+                    ? "bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-800/60 cursor-not-allowed shadow-none"
                     : "bg-accent-lux hover:bg-accent-lux/95 text-white shadow-accent-lux/20"
                 }`}
               >
@@ -1492,6 +1591,8 @@ function BookingContent() {
                     <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     Processing...
                   </span>
+                ) : step >= 2 && !isSelectedAddressServiceable ? (
+                  "Outside Service Zone (Varanasi Only)"
                 ) : (
                   <>
                     {step === 3 ? "Authorize & Book" : "Continue"}

@@ -270,6 +270,7 @@ export default function PricingCalculator({ onBook }: CalculatorProps) {
         if (!isMounted) return;
         if (res && res.success) {
           const rawList: any[] = res.data?.localities || (Array.isArray(res.data) ? res.data : []) || (res as any).localities || [];
+          const seenNames = new Set<string>();
           const mapped = rawList
             .filter((loc) => loc.status !== false)
             .map((loc) => ({
@@ -277,7 +278,13 @@ export default function PricingCalculator({ onBook }: CalculatorProps) {
               name: loc.localityName || loc.name,
               pincode: loc.pincode || "",
             }))
-            .filter((loc) => Boolean(loc.name));
+            .filter((loc) => {
+              if (!loc.name) return false;
+              const lower = loc.name.toLowerCase().trim();
+              if (seenNames.has(lower)) return false;
+              seenNames.add(lower);
+              return true;
+            });
           setApiLocalities(mapped);
           if (mapped.length > 0) {
             setEnquiryForm((prev) => ({

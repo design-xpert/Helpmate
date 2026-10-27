@@ -324,6 +324,8 @@ interface AppState {
   setHasPromptedLocation: (prompted: boolean) => void;
   isLocationSet: boolean;
   setIsLocationSet: (val: boolean) => void;
+  isOutOfServiceZone: boolean;
+  setIsOutOfServiceZone: (val: boolean) => void;
   selectedAddressId: string | null;
   setSelectedAddressId: (id: string | null) => void;
   selectedDate: string | null;
@@ -411,10 +413,16 @@ export const useStore = create<AppState>()(
           const res = await getCustomerAddressesApi(token);
           if (res.success && res.data) {
             const mapped = res.data.map(mapBackendAddressToFrontend);
+            const seenAddrIds = new Set<string>();
+            const uniqueMapped = mapped.filter((a) => {
+              if (!a.id || seenAddrIds.has(a.id)) return false;
+              seenAddrIds.add(a.id);
+              return true;
+            });
             const currentSelected = get().selectedAddressId;
-            const stillValid = currentSelected ? mapped.some((a) => a.id === currentSelected) : false;
+            const stillValid = currentSelected ? uniqueMapped.some((a) => a.id === currentSelected) : false;
             set({ 
-              addresses: mapped, 
+              addresses: uniqueMapped, 
               isLoadingAddresses: false,
               selectedAddressId: stillValid ? currentSelected : null
             });
@@ -1199,6 +1207,8 @@ export const useStore = create<AppState>()(
       setHasPromptedLocation: (prompted) => set({ hasPromptedLocation: prompted }),
       isLocationSet: false,
       setIsLocationSet: (val) => set({ isLocationSet: val }),
+      isOutOfServiceZone: false,
+      setIsOutOfServiceZone: (val) => set({ isOutOfServiceZone: val }),
       selectedAddressId: null,
       setSelectedAddressId: (id) => set({ selectedAddressId: id }),
       selectedDate: null,
@@ -1823,6 +1833,7 @@ export const useStore = create<AppState>()(
         loyaltyPoints: state.loyaltyPoints,
         selectedLocation: state.selectedLocation,
         isLocationSet: state.isLocationSet,
+        isOutOfServiceZone: state.isOutOfServiceZone,
         hasPromptedLocation: state.hasPromptedLocation,
         locationPermissionDenied: state.locationPermissionDenied,
         addresses: state.addresses,

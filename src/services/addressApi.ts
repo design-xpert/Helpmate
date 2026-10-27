@@ -167,6 +167,18 @@ export async function getLocalitiesApi(search?: string): Promise<AddressApiRespo
           // Keep page 1 results on fallback
         }
       }
+
+      // Deduplicate localities to ensure unique keys across pages
+      if (Array.isArray(json.data?.localities)) {
+        const seenIds = new Set<string>();
+        json.data.localities = json.data.localities.filter((loc: any) => {
+          const id = String(loc._id || loc.id || `${loc.localityName}-${loc.pincode}`);
+          if (!id || seenIds.has(id)) return false;
+          seenIds.add(id);
+          return true;
+        });
+      }
+
       return json;
     }
 

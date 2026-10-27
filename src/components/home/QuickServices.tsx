@@ -229,7 +229,7 @@ export default function QuickServices({
             const isLoading = navigatingPkgId === item.id;
             return (
               <button
-                key={item.id || idx}
+                key={`${item.id}-${idx}`}
                 type="button"
                 disabled={isLoading}
                 onClick={() => handleCardClick(item)}

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { 
   MapPin, 
+  MapPinOff,
   Navigation, 
   Search, 
   Check, 
@@ -19,6 +20,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useStore } from "@/store/useStore";
 import { citiesServed } from "@/utils/mockData";
 import { fetchCustomerNeighborhoodZonesApi, NeighborhoodZoneItem } from "@/services/neighborhoodApi";
+import { 
+  reverseGeocodeAndCheckServiceability, 
+  checkIsLocationServiceable, 
+  GeolocationResult 
+} from "@/services/locationService";
 
 interface LocationModalProps {
   isOpen: boolean;
@@ -34,11 +40,13 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
     setLocationPermissionDenied,
     addNotification,
     setIsLocationSet,
-    setHasPromptedLocation
+    setHasPromptedLocation,
+    setIsOutOfServiceZone
   } = useStore();
 
   const [mounted, setMounted] = useState(false);
-  const [mode, setMode] = useState<"prompt" | "detecting" | "manual" | "success">("prompt");
+  const [mode, setMode] = useState<"prompt" | "detecting" | "manual" | "success" | "out_of_zone">("prompt");
+  const [detectedInfo, setDetectedInfo] = useState<GeolocationResult | null>(null);
   const [manualInput, setManualInput] = useState("");
   const [, setErrorMessage] = useState<string | null>(null);
   const [zones, setZones] = useState<NeighborhoodZoneItem[]>([]);
@@ -102,29 +110,61 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
     }
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        void position;
-        const detectedArea = "Sigra, Varanasi"; // Reverse-geocoded local area
-        
-        setSelectedLocation(detectedArea);
-        setLocationPermissionDenied(false);
-        setIsLocationSet(true);
-        setHasPromptedLocation(true);
-        if (typeof window !== "undefined") {
-          localStorage.setItem("helpmate_location_set", "true");
-          localStorage.setItem("helpmate_user_location", detectedArea);
+      async (position) => {
+        try {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          const geo = await reverseGeocodeAndCheckServiceability(lat, lng);
+          setDetectedInfo(geo);
+
+          const detectedArea = geo.formattedAddress || (geo.city ? `${geo.city}` : "Detected Location");
+          setLocationPermissionDenied(false);
+          setIsLocationSet(true);
+          setHasPromptedLocation(true);
+
+          if (geo.isServiceable) {
+            setSelectedLocation(detectedArea);
+            setIsOutOfServiceZone(false);
+
+            if (typeof window !== "undefined") {
+              localStorage.setItem("helpmate_location_set", "true");
+              localStorage.setItem("helpmate_user_location", detectedArea);
+              localStorage.setItem("helpmate_out_of_zone", "false");
+            }
+            setMode("success");
+
+            addNotification(
+              "Location Access Granted",
+              `Detected location: ${detectedArea}. Showing nearby service partners.`,
+              "success"
+            );
+
+            setTimeout(() => {
+              onClose();
+            }, 1200);
+          } else {
+            // Outside of serviceable zone
+            setSelectedLocation(detectedArea);
+            setIsOutOfServiceZone(true);
+
+            if (typeof window !== "undefined") {
+              localStorage.setItem("helpmate_location_set", "true");
+              localStorage.setItem("helpmate_user_location", detectedArea);
+              localStorage.setItem("helpmate_out_of_zone", "true");
+            }
+            setMode("out_of_zone");
+
+            addNotification(
+              "Outside Serviceable Area",
+              `We detected you are in ${geo.city || "a non-serviceable city"}. We are working to come to your city soon!`,
+              "warning"
+            );
+          }
+        } catch (err) {
+          console.warn("Reverse geocode failed:", err);
+          setErrorMessage("Failed to resolve your location coordinates. Please choose your area manually.");
+          setMode("manual");
         }
-        setMode("success");
-
-        addNotification(
-          "Location Access Granted",
-          `Detected location: ${detectedArea}. Showing nearby service partners.`,
-          "success"
-        );
-
-        setTimeout(() => {
-          onClose();
-        }, 1100);
       },
       (error) => {
         console.warn("Geolocation permission error:", error);
@@ -142,7 +182,7 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
     );
   };
 
-  const handleManualSubmit = (e: React.FormEvent) => {
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualInput.trim()) return;
 
@@ -150,10 +190,31 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
     setSelectedLocation(formattedLoc);
     setIsLocationSet(true);
     setHasPromptedLocation(true);
+
+    const isServiceable = await checkIsLocationServiceable(formattedLoc, "", formattedLoc);
+    setIsOutOfServiceZone(!isServiceable);
+
     if (typeof window !== "undefined") {
       localStorage.setItem("helpmate_location_set", "true");
       localStorage.setItem("helpmate_user_location", formattedLoc);
+      localStorage.setItem("helpmate_out_of_zone", isServiceable ? "false" : "true");
     }
+
+    if (!isServiceable) {
+      setDetectedInfo({
+        locality: formattedLoc,
+        city: formattedLoc,
+        state: "",
+        pincode: "",
+        formattedAddress: formattedLoc,
+        isServiceable: false,
+        latitude: 0,
+        longitude: 0,
+      });
+      setMode("out_of_zone");
+      return;
+    }
+
     addNotification("Location Set", `Service location set to "${formattedLoc}".`, "info");
     onClose();
   };
@@ -161,10 +222,12 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
   const handleSelectQuickCity = (cityName: string) => {
     setSelectedLocation(cityName);
     setIsLocationSet(true);
+    setIsOutOfServiceZone(false);
     setHasPromptedLocation(true);
     if (typeof window !== "undefined") {
       localStorage.setItem("helpmate_location_set", "true");
       localStorage.setItem("helpmate_user_location", cityName);
+      localStorage.setItem("helpmate_out_of_zone", "false");
     }
     addNotification("Location Updated", `Selected zone: ${cityName}`, "success");
     onClose();
@@ -251,6 +314,20 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
                     </span>
                     <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight leading-tight">
                       Location Updated
+                    </h3>
+                  </div>
+                </div>
+              ) : mode === "out_of_zone" ? (
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-500/20 shrink-0">
+                    <MapPinOff className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-extrabold tracking-widest text-amber-600 dark:text-amber-400">
+                      Service Area Notice
+                    </span>
+                    <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight leading-tight">
+                      Outside Service Zone
                     </h3>
                   </div>
                 </div>
@@ -345,6 +422,66 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                       Set to <strong className="text-slate-900 dark:text-white font-bold">{selectedLocation}</strong>
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* MODE: OUT OF SERVICE ZONE (COMING SOON NOTICE) */}
+              {mode === "out_of_zone" && (
+                <div className="py-2 space-y-5 text-center">
+                  <div className="w-16 h-16 rounded-3xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center justify-center mx-auto shadow-sm">
+                    <MapPinOff className="w-8 h-8" />
+                  </div>
+
+                  <div className="space-y-2 max-w-sm mx-auto">
+                    <h4 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                      We are working to come to your city!
+                    </h4>
+                    <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300">
+                      <span className="font-bold text-slate-400 text-[10px] uppercase tracking-wider block mb-1">
+                        Detected Location
+                      </span>
+                      <span className="font-extrabold text-slate-900 dark:text-white text-sm">
+                        {detectedInfo?.formattedAddress || selectedLocation}
+                      </span>
+                      {detectedInfo?.pincode && (
+                        <span className="text-slate-500 dark:text-slate-400 block text-[11px] font-mono mt-1">
+                          Postal Code: {detectedInfo.pincode}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
+                      HelpMate currently delivers verified luxury home services exclusively across <strong className="text-slate-800 dark:text-slate-200 font-bold">Varanasi</strong>. We are actively expanding and working hard to bring services to {detectedInfo?.city || "your city"} soon!
+                    </p>
+                  </div>
+
+                  <div className="space-y-2.5 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedLocation("Varanasi");
+                        setIsOutOfServiceZone(false);
+                        if (typeof window !== "undefined") {
+                          localStorage.setItem("helpmate_location_set", "true");
+                          localStorage.setItem("helpmate_user_location", "Varanasi");
+                          localStorage.setItem("helpmate_out_of_zone", "false");
+                        }
+                        onClose();
+                      }}
+                      className="w-full py-3.5 px-6 rounded-2xl bg-accent-lux hover:bg-accent-lux/90 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/10 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                    >
+                      <span>Explore Varanasi Services Anyway</span>
+                      <ArrowRight className="w-4 h-4 text-white" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setMode("manual")}
+                      className="w-full py-3 px-6 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      <Search className="w-3.5 h-3.5 text-slate-400" />
+                      Choose a Varanasi Service Hub Manually
+                    </button>
                   </div>
                 </div>
               )}

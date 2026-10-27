@@ -30,7 +30,9 @@ import {
   Lock,
   HeartHandshake,
   Phone,
-  Edit3
+  Edit3,
+  AlertTriangle,
+  MapPinOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useStore, Address, CartItem, getItemAddonTotal, extractStoredCartAddons } from "@/store/useStore";
@@ -45,6 +47,11 @@ import { formatImageUrl } from "@/utils/image";
 import { CartPackageImage } from "@/components/booking/CartPackageImage";
 import { CartAddonImage } from "@/components/booking/CartAddonImage";
 import { toast } from "@/components/common/Toast";
+import { 
+  getServiceableLocalities, 
+  isAddressWithinServiceableZone, 
+  ServiceableLocality 
+} from "@/services/locationService";
 
 interface Props {
   isOpen: boolean;
@@ -109,6 +116,26 @@ export default function CheckoutModal({
   const [couponError, setCouponError] = useState("");
   const [showAddAddress, setShowAddAddress] = useState(false);
   const [editingAddress, setEditingAddress] = useState<Address | null>(null);
+  const [activeLocalities, setActiveLocalities] = useState<ServiceableLocality[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      getServiceableLocalities().then((list) => {
+        if (list && list.length > 0) {
+          setActiveLocalities(list);
+        }
+      });
+    }
+  }, [isOpen]);
+
+  const selectedAddress = useMemo(() => {
+    return addresses.find((a) => a.id === selectedAddressId) || null;
+  }, [addresses, selectedAddressId]);
+
+  const isSelectedAddressServiceable = useMemo(() => {
+    if (!selectedAddress) return true;
+    return isAddressWithinServiceableZone(selectedAddress, activeLocalities);
+  }, [selectedAddress, activeLocalities]);
 
   // New address form state
   const [newTag, setNewTag] = useState<Address["tag"]>("Home");
@@ -297,7 +324,7 @@ export default function CheckoutModal({
   const isStepCompleted = (idx: number): boolean => {
     if (idx === 0) return cart.length > 0;
     if (idx === 1) return isStepCompleted(0) && Boolean(selectedDate && selectedTimeSlot);
-    if (idx === 2) return isStepCompleted(1) && Boolean((token || isLoggedIn) && selectedAddressId && addresses.some((a) => a.id === selectedAddressId));
+    if (idx === 2) return isStepCompleted(1) && Boolean((token || isLoggedIn) && selectedAddressId && isSelectedAddressServiceable && addresses.some((a) => a.id === selectedAddressId));
     if (idx === 3) return step === 4;
     return false;
   };
@@ -338,6 +365,12 @@ export default function CheckoutModal({
         modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
+      if (!isSelectedAddressServiceable) {
+        toast.error("Outside Service Zone", "Service available only in Varanasi. Please select a Varanasi address.");
+        setStep(2);
+        modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
     }
 
     setStep(targetStep);
@@ -361,12 +394,20 @@ export default function CheckoutModal({
       toast.error("Address Required", "Please select or add a service address.");
       return;
     }
+    if (step === 2 && !isSelectedAddressServiceable) {
+      toast.error("Outside Service Zone", "Service available only in Varanasi. Please select a Varanasi address.");
+      return;
+    }
     if (step < 3) {
       setStep(step + 1);
       modalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     } else {
       if (!token || !isLoggedIn) {
         toast.error("Authentication Required", "Please Sign In or Sign Up to book a service.");
+        return;
+      }
+      if (!isSelectedAddressServiceable) {
+        toast.error("Outside Service Zone", "Service available only in Varanasi. Please select a Varanasi address.");
         return;
       }
       // Create final booking via API
@@ -569,7 +610,7 @@ export default function CheckoutModal({
                     </div>
                   </div>
                 ) : (
-                  cart.map((item) => {
+                  cart.map((item, idx) => {
                     const addonTotal = (item.selectedAddons || []).reduce(
                       (sum, a) => sum + (a.totalPrice || ((a.price || 0) * (a.quantity || 1))),
                       0
@@ -583,7 +624,7 @@ export default function CheckoutModal({
 
                     return (
                       <div
-                        key={item.id}
+                        key={`${item.id}-${idx}`}
                         className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2"
                       >
                         <div className="flex justify-between items-center gap-3">
@@ -1093,14 +1134,15 @@ export default function CheckoutModal({
 
                   {/* Existing Address Grid */}
                   <div className="space-y-3">
-                    {addresses.map((addr) => {
+                    {addresses.map((addr, idx) => {
                       const isSelected = selectedAddressId === addr.id;
+                      const isAddrServiceable = isAddressWithinServiceableZone(addr, activeLocalities);
                       const TagIcon = addr.tag.toLowerCase().includes("work") || addr.tag.toLowerCase().includes("office") ? Briefcase : addr.tag.toLowerCase().includes("home") ? Home : Building;
                       const RecipientIcon = addr.recipientType === "Family Member" ? Users : addr.recipientType === "Friend / Neighbor" ? HeartHandshake : addr.recipientType === "Office / Work" ? Briefcase : User;
 
                       return (
                         <div
-                          key={addr.id}
+                          key={`${addr.id}-${idx}`}
                           onClick={() => setSelectedAddressId(addr.id)}
                           className={`p-4.5 rounded-2xl border cursor-pointer transition-all duration-300 flex items-start justify-between gap-3 select-none ${isSelected
                               ? "border-[#782860] bg-gradient-to-r from-[#782860]/5 via-purple-500/5 to-transparent shadow-md ring-2 ring-[#782860]/30 scale-[1.01]"
@@ -1133,6 +1175,12 @@ export default function CheckoutModal({
                                   <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 font-mono">
                                     <MapPin className="w-2.5 h-2.5" />
                                     {addr.locality} ({addr.pincode || "Varanasi"})
+                                  </span>
+                                )}
+
+                                {!isAddrServiceable && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800/40">
+                                    <AlertTriangle className="w-2.5 h-2.5 text-rose-600 dark:text-rose-400" /> Outside Service Zone
                                   </span>
                                 )}
                               </div>
@@ -1182,6 +1230,21 @@ export default function CheckoutModal({
                       );
                     })}
                   </div>
+
+                  {/* Warning Banner if selected address is outside of serviceable zone */}
+                  {selectedAddress && !isSelectedAddressServiceable && (
+                    <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2.5 shadow-xs mt-3">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                      <div className="space-y-0.5 text-left">
+                        <p className="font-extrabold text-xs text-amber-900 dark:text-amber-100">
+                          Outside of Serviceable Zone
+                        </p>
+                        <p className="leading-relaxed text-[11px] text-amber-800 dark:text-amber-300">
+                          Service available only in Varanasi. The selected address ({selectedAddress.locality || selectedAddress.city} {selectedAddress.pincode ? `- ${selectedAddress.pincode}` : ""}) is outside our active delivery network. Please choose or add a Varanasi address.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -1234,6 +1297,40 @@ export default function CheckoutModal({
                     <CreditCard className="w-4 h-4 text-accent-lux" /> Complete Secure Checkout
                   </h4>
                 </div>
+
+                {/* Outside Serviceable Zone Alert on Checkout Modal */}
+                {!isSelectedAddressServiceable && selectedAddress && (
+                  <div className="p-3.5 sm:p-4 rounded-2xl bg-rose-500/10 border-2 border-rose-500/30 text-rose-700 dark:text-rose-400 flex items-start gap-3 shadow-xs">
+                    <div className="w-8 h-8 rounded-xl bg-rose-500/15 flex items-center justify-center shrink-0 mt-0.5">
+                      <MapPinOff className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                    </div>
+                    <div className="space-y-1 text-left flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h5 className="font-extrabold text-xs text-rose-700 dark:text-rose-300">
+                          Outside of Serviceable Zone
+                        </h5>
+                        <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[8px] font-black uppercase tracking-wider">
+                          Service Available Only in Varanasi
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-rose-600/90 dark:text-rose-300/90 leading-relaxed">
+                        HelpMate currently delivers verified luxury home services only across Varanasi. Your selected address (<strong>{selectedAddress.locality || selectedAddress.city} {selectedAddress.pincode ? `- ${selectedAddress.pincode}` : ""}</strong>) cannot be serviced.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStep(2);
+                          if (modalBodyRef.current) {
+                            modalBodyRef.current.scrollTo({ top: 0, behavior: "smooth" });
+                          }
+                        }}
+                        className="mt-1 px-3 py-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 shadow-xs"
+                      >
+                        <MapPin className="w-3 h-3" /> Change to a Varanasi Address
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Pay After Service - Available & Selected */}
                 <div
@@ -1368,14 +1465,26 @@ export default function CheckoutModal({
               )}
               <button
                 onClick={handleNextStep}
-                disabled={step === 0 && cart.length === 0}
+                disabled={
+                  (step === 0 && cart.length === 0) ||
+                  isSubmittingBooking ||
+                  (step >= 2 && !isSelectedAddressServiceable)
+                }
                 className={`px-6 py-3 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-md ${
-                  step === 0 && cart.length === 0
+                  (step === 0 && cart.length === 0) ||
+                  isSubmittingBooking ||
+                  (step >= 2 && !isSelectedAddressServiceable)
                     ? "bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none"
                     : "bg-primary-lux hover:bg-slate-800 dark:bg-accent-lux dark:hover:bg-accent-lux/95 text-white cursor-pointer"
                 }`}
               >
-                {step === 3 ? "Authorize & Book" : "Continue"} <ChevronRight className="w-4 h-4" />
+                {step >= 2 && !isSelectedAddressServiceable
+                  ? "Outside Service Zone (Varanasi Only)"
+                  : step === 3
+                  ? isSubmittingBooking
+                    ? "Confirming..."
+                    : "Authorize & Book"
+                  : "Continue"} <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>

@@ -217,9 +217,9 @@ export default function InTheSpotlight() {
                 />
               ))
             ) : (
-              visibleBanners.map((banner) => (
+              visibleBanners.map((banner, bIdx) => (
                 <div
-                  key={banner.id}
+                  key={`${banner.id}-${bIdx}`}
                   onClick={() => handleCardClick(banner.targetUrl)}
                   className="group relative w-[310px] sm:w-[370px] md:w-[410px] h-[190px] sm:h-[215px] shrink-0 rounded-2xl sm:rounded-3xl overflow-hidden cursor-pointer select-none shadow-md hover:shadow-xl transition-all duration-300 border border-[#48073d]/10 dark:border-white/10 snap-start"
                 >
