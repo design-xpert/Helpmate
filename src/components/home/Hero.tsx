@@ -121,7 +121,7 @@ export default function Hero() {
 
   const handleSuggestionClick = (item: any) => {
     if (item.categorySlug && item.id) {
-      router.push(`/services/${item.categorySlug}?${item.categoryId ? `categoryId=${encodeURIComponent(item.categoryId)}&` : ""}item=${item.id}`);
+      router.push(`/services/${item.categorySlug}?${item.categoryId ? `categoryId=${encodeURIComponent(item.categoryId)}&` : ""}item=${item.id}&view=details`);
     } else {
       router.push(`/services/${item.id}`);
     }

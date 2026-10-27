@@ -27,7 +27,6 @@ import { useStore, getItemAddonTotal } from "@/store/useStore";
 import { formatImageUrl } from "@/utils/image";
 import { formatDuration } from "@/utils/dateTime";
 import { citiesServed, services } from "@/utils/mockData";
-import LocationModal from "./LocationModal";
 import BetaBanner from "./BetaBanner";
 import { fetchCustomerPackagesApi, CustomerPackageItem } from "@/services/packageApi";
 
@@ -69,29 +68,13 @@ function HeaderContent() {
   } = useStore();
 
   const [scrolled, setScrolled] = useState(false);
-  const [showLocationModal, setShowLocationModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showCartDropdown, setShowCartDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
   const [suggestions, setSuggestions] = useState<typeof services>([]);
 
-  // Auto prompt location modal on first visit/open
-  useEffect(() => {
-    const isLocationSavedInStorage =
-      typeof window !== "undefined" && localStorage.getItem("helpmate_location_set") === "true";
-
-    if (!hasPromptedLocation && !isLocationSet && !isLocationSavedInStorage) {
-      const timer = setTimeout(() => {
-        setShowLocationModal(true);
-        setHasPromptedLocation(true);
-        if (typeof window !== "undefined") {
-          localStorage.setItem("helpmate_location_set", "true");
-        }
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [hasPromptedLocation, isLocationSet, setHasPromptedLocation]);
+  
 
   // Refs for outside click tracking
   const searchRef = useRef<HTMLFormElement>(null);
@@ -155,11 +138,7 @@ function HeaderContent() {
     }
   };
 
-  const handleCitySelect = (city: string) => {
-    setSelectedLocation(city);
-    setShowLocationModal(false);
-  };
-
+  
   const headerRef = useRef<HTMLElement>(null);
   const lastHeaderHeightRef = useRef<number>(0);
 
@@ -213,21 +192,10 @@ function HeaderContent() {
         <div className="max-w-7xl mx-auto px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-6">
 
         {/* LOGO */}
-        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+        <div className="flex items-center shrink-0">
           <Link href="/" className="flex items-center gap-2 group shrink-0">
             <img src="/logo-transparent.png" alt="HelpMate Logo" className="h-9 sm:h-13 w-auto object-contain" />
           </Link>
-
-          {/* Location Picker */}
-          <button
-            onClick={() => setShowLocationModal(true)}
-            className="flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-full bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-700/80 border border-slate-200/10 transition-all duration-300 text-[10px] sm:text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer shrink-0"
-            title="Change service location"
-          >
-            <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-accent-lux shrink-0" />
-            <span className="truncate max-w-[65px] xs:max-w-[85px] sm:max-w-[140px]">{selectedLocation || "Location"}</span>
-            <ChevronDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 opacity-60 shrink-0" />
-          </button>
         </div>
 
         {/* Search Bar */}
@@ -264,7 +232,7 @@ function HeaderContent() {
                     const subId = item.subCategory?.id;
                     const actId = item.serviceAction?.id;
                     const pkgId = item.package.id;
-                    const targetUrl = `/services/${catSlug}?${catId ? `categoryId=${encodeURIComponent(catId)}&` : ""}${subId ? `sub=${encodeURIComponent(subId)}&` : ""}${actId ? `act=${encodeURIComponent(actId)}&` : ""}item=${encodeURIComponent(pkgId)}`;
+                    const targetUrl = `/services/${catSlug}?${catId ? `categoryId=${encodeURIComponent(catId)}&` : ""}${subId ? `sub=${encodeURIComponent(subId)}&` : ""}${actId ? `act=${encodeURIComponent(actId)}&` : ""}item=${encodeURIComponent(pkgId)}&view=details`;
 
                     return (
                       <button
@@ -622,11 +590,7 @@ function HeaderContent() {
     </div>
   </header>
 
-      {/* Location Selector Modal with Geolocation & Manual Fallback */}
-      <LocationModal
-        isOpen={showLocationModal}
-        onClose={() => setShowLocationModal(false)}
-      />
+      
     </>
   );
 }

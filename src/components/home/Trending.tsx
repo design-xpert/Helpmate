@@ -230,7 +230,7 @@ export default function Trending() {
                   className="w-[280px] sm:w-[320px] shrink-0"
                 >
                   <Link
-                    href={`/services/${service.categorySlug || service.id}?${service.categoryId ? `categoryId=${encodeURIComponent(service.categoryId)}&` : ""}item=${service.id}`}
+                    href={`/services/${service.categorySlug || service.id}?${service.categoryId ? `categoryId=${encodeURIComponent(service.categoryId)}&` : ""}item=${service.id}&view=details`}
                     className="glass-panel overflow-hidden group flex flex-col h-full border border-slate-200/10 hover:shadow-lg transition-all duration-300 cursor-pointer block text-left"
                   >
                     {/* Image & Badges */}

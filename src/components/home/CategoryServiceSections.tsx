@@ -216,6 +216,7 @@ export default function CategoryServiceSections() {
                   qp.set("act", pkg.serviceAction._id);
                 }
                 qp.set("item", pkg._id);
+                qp.set("view", "details");
 
                 return {
                   id: pkg._id,

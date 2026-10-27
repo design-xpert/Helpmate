@@ -92,6 +92,7 @@ export default function InTheSpotlight() {
             if (item.subCategory?.id) qp.set("sub", item.subCategory.id);
             if (item.serviceAction?.id) qp.set("act", item.serviceAction.id);
             qp.set("item", item.packageId);
+            qp.set("view", "details");
 
             // Clean badge formatting
             let badgeText = item.badge || "Featured";

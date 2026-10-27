@@ -119,8 +119,8 @@ export default function QuickServices({
               typeof item.category === "object"
                 ? item.category?.id || (item.category as any)?._id
                 : (item.categoryId ||
-                   (item as any)?.serviceActionId?.categoryId?._id ||
-                   (item as any)?.serviceActionId?.categoryId?.id);
+                  (item as any)?.serviceActionId?.categoryId?._id ||
+                  (item as any)?.serviceActionId?.categoryId?.id);
             const pkgId = String(item.packageId || item._id || item.id || `quick-${idx}`);
 
             // Image URL resolution:
@@ -191,8 +191,8 @@ export default function QuickServices({
       pkg.categorySlug && pkg.categorySlug !== "quick-service"
         ? pkg.categorySlug
         : pkg.categoryId
-        ? String(pkg.categoryId)
-        : "service";
+          ? String(pkg.categoryId)
+          : "service";
 
     const queryParams = new URLSearchParams();
     if (pkg.categoryId) {
@@ -212,7 +212,7 @@ export default function QuickServices({
     <div className="max-w-7xl mx-auto w-full z-20 mb-5 sm:mb-8 animate-fadeIn">
       {/* Sleek, Low-Profile Quick Services Strip */}
       <div className="rounded-2xl sm:rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 shadow-md shadow-purple-950/5 py-1.5 px-2.5 sm:px-3 flex items-center justify-between gap-2 sm:gap-3 transition-all">
-        
+
         {/* Left: Quick Label Badge */}
         <div className="flex items-center gap-1.5 shrink-0 pr-2 border-r border-slate-200/80 dark:border-slate-800">
           <span className="w-6 h-6 rounded-full bg-gradient-to-tr from-amber-500 to-accent-lux text-white flex items-center justify-center shadow-xs">
@@ -233,9 +233,8 @@ export default function QuickServices({
                 type="button"
                 disabled={isLoading}
                 onClick={() => handleCardClick(item)}
-                className={`flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-xl sm:rounded-full bg-slate-100/80 hover:bg-purple-50 dark:bg-slate-800/60 dark:hover:bg-purple-950/60 border border-slate-200/60 dark:border-slate-700/60 hover:border-accent-lux/60 transition-all duration-200 shrink-0 group cursor-pointer shadow-2xs hover:shadow-xs active:scale-95 ${
-                  isLoading ? "opacity-60 pointer-events-none" : ""
-                }`}
+                className={`flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-xl sm:rounded-full bg-slate-100/80 hover:bg-purple-50 dark:bg-slate-800/60 dark:hover:bg-purple-950/60 border border-slate-200/60 dark:border-slate-700/60 hover:border-accent-lux/60 transition-all duration-200 shrink-0 group cursor-pointer shadow-2xs hover:shadow-xs active:scale-95 ${isLoading ? "opacity-60 pointer-events-none" : ""
+                  }`}
                 title={`View ${item.name} (₹${item.price})`}
               >
                 {/* Micro Thumbnail with initials fallback */}

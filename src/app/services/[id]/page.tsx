@@ -607,7 +607,12 @@ function ServiceDetailPageContent({ params }: PageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSavedOnly, setShowSavedOnly] = useState(false);
   const [popupPackage, setPopupPackage] = useState<any | null>(null);
-  const isStandaloneDetailsView = searchParams.get("view") === "details";
+  const isStandaloneDetailsView =
+    searchParams.get("view") === "details" ||
+    (Boolean(itemParam) &&
+      searchParams.get("view") !== "stepper" &&
+      searchParams.get("from") !== "stepper" &&
+      !actParam);
   const [packageReviews, setPackageReviews] = useState<any[]>([]);
   const [loadingPackageReviews, setLoadingPackageReviews] = useState<boolean>(false);
 

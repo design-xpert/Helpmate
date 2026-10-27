@@ -949,7 +949,7 @@ function SearchPageContent() {
                         initial={{ opacity: 0, y: 16 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.3, delay: idx * 0.04 }}
-                        onClick={() => router.push(`/services/${categorySlug}?${catId ? `categoryId=${encodeURIComponent(catId)}&` : ""}item=${pkg.id}`)}
+                        onClick={() => router.push(`/services/${categorySlug}?${catId ? `categoryId=${encodeURIComponent(catId)}&` : ""}item=${pkg.id}&view=details`)}
                         className="group relative bg-white dark:bg-slate-900/80 rounded-2xl border border-amber-500/20 dark:border-slate-800 hover:border-amber-500/50 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden cursor-pointer hover:-translate-y-1"
                       >
                         {/* Card Top Banner / Media */}
@@ -1177,6 +1177,7 @@ function SearchPageContent() {
                     if (subId) qp.set("sub", subId);
                     if (actId) qp.set("act", actId);
                     qp.set("item", pkg.id);
+                    qp.set("view", "details");
 
                     return (
                       <motion.div
@@ -1365,7 +1366,7 @@ function SearchPageContent() {
                                 type="button"
                                 onClick={() => {
                                   setSearchSuggestions([]);
-                                  router.push(`/services/${categorySlug}?${catId ? `categoryId=${encodeURIComponent(catId)}&` : ""}item=${pkg.id}`);
+                                  router.push(`/services/${categorySlug}?${catId ? `categoryId=${encodeURIComponent(catId)}&` : ""}item=${pkg.id}&view=details`);
                                 }}
                                 className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left transition-colors cursor-pointer"
                               >
@@ -1652,7 +1653,7 @@ function SearchPageContent() {
                               initial={{ opacity: 0, y: 16 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ duration: 0.3, delay: idx * 0.04 }}
-                              onClick={() => router.push(`/services/${categorySlug}?${catId ? `categoryId=${encodeURIComponent(catId)}&` : ""}item=${pkg.id}`)}
+                              onClick={() => router.push(`/services/${categorySlug}?${catId ? `categoryId=${encodeURIComponent(catId)}&` : ""}item=${pkg.id}&view=details`)}
                               className="group relative bg-white dark:bg-slate-900/80 rounded-2xl border border-slate-200/60 dark:border-slate-800 hover:border-accent-lux/40 dark:hover:border-accent-lux/40 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden cursor-pointer hover:-translate-y-1"
                             >
                               {/* Card Top Banner / Media */}

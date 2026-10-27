@@ -542,9 +542,6 @@ function LoginContent() {
                     <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
                       Mobile Number
                     </label>
-                    <span className="text-[11px] text-accent-lux font-bold">
-                      Passwordless Login
-                    </span>
                   </div>
                   <div className="relative">
                     <span className="absolute left-4 top-3.5 text-xs font-bold text-slate-500 flex items-center gap-1 select-none">
