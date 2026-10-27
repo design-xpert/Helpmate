@@ -126,6 +126,12 @@ function ProfilePageContent() {
     }
   }, [searchParams]);
 
+  useEffect(() => {
+    if (activeTab === "addresses" && token) {
+      fetchAddresses(true);
+    }
+  }, [activeTab, token, fetchAddresses]);
+
   // Reschedule state
   const [reschedulingId, setReschedulingId] = useState<string | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState("");
@@ -1084,6 +1090,7 @@ function ProfilePageContent() {
                       transition={{ duration: 0.2 }}
                     >
                       <AddAddressForm
+                        key={editingAddress ? `edit-${editingAddress.id}` : "add-address"}
                         initialData={editingAddress || undefined}
                         onSave={async (savedAddr) => {
                           let success = false;
@@ -1095,6 +1102,7 @@ function ProfilePageContent() {
                           if (success) {
                             setEditingAddress(null);
                             setShowAddressForm(false);
+                            await fetchAddresses(true);
                           }
                         }}
                         onCancel={() => {

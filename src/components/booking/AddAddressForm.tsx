@@ -144,6 +144,54 @@ export const AddAddressForm: React.FC<AddAddressFormProps> = ({
     };
   }, []);
 
+  // Synchronize form states whenever initialData changes
+  useEffect(() => {
+    if (initialData) {
+      setTag(initialData.tag || "Home");
+      setRecipientType(initialData.recipientType || "Self");
+      setRecipientName(
+        initialData.recipientName ||
+        (initialData.recipientType === "Self" || !initialData.recipientType ? currentUser.name : "")
+      );
+      setRecipientPhone(
+        initialData.recipientPhone || initialData.recipientMobile ||
+        (initialData.recipientType === "Self" || !initialData.recipientType ? currentUser.phone : "")
+      );
+      setLocality(initialData.locality || "");
+      setLocalityId(initialData.localityId || "");
+      setPincode(initialData.pincode || "");
+      setLandmark(initialData.landmark || "");
+      setStreetAddress(initialData.addressLine || (initialData as any).houseNo || "");
+      setCity(initialData.city || "Varanasi");
+      setIsDefault(initialData.isDefault || false);
+
+      if (allLocalitiesRef.current.length > 0 && (initialData.locality || initialData.localityId)) {
+        const match = allLocalitiesRef.current.find(
+          (m) =>
+            (initialData.localityId && m.id === initialData.localityId) ||
+            (initialData.locality && m.name.toLowerCase() === initialData.locality.toLowerCase())
+        );
+        if (match) {
+          setLocality(match.name);
+          setLocalityId(match.id);
+          if (match.pincode) setPincode(match.pincode);
+        }
+      }
+    } else {
+      setTag("Home");
+      setRecipientType("Self");
+      setRecipientName(currentUser.name);
+      setRecipientPhone(currentUser.phone);
+      setLocality("");
+      setLocalityId("");
+      setPincode("");
+      setLandmark("");
+      setStreetAddress("");
+      setCity("Varanasi");
+      setIsDefault(false);
+    }
+  }, [initialData]);
+
   // Recipient Badge Configurations
   const recipientBadges = [
     {

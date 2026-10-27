@@ -104,10 +104,15 @@ export default function CheckoutModal({
   } = useStore();
 
   useEffect(() => {
-    if (isOpen && token) {
-      fetchAddresses();
+    if (isOpen) {
+      setSelectedDate(null);
+      setSelectedTimeSlot(null);
+      setSelectedAddressId(null);
+      if (token) {
+        fetchAddresses();
+      }
     }
-  }, [isOpen, token, fetchAddresses]);
+  }, [isOpen, token, fetchAddresses, setSelectedDate, setSelectedTimeSlot, setSelectedAddressId]);
 
   const [step, setStep] = useState(0); // 0: Addons/Cart, 1: Schedule, 2: Address, 3: Payment
   const modalBodyRef = useRef<HTMLDivElement>(null);
@@ -211,8 +216,7 @@ export default function CheckoutModal({
   // Auto-reset selection if date or time is in the past
   useEffect(() => {
     if (selectedDate && isPastDate(selectedDate)) {
-      const todayISO = new Date().toISOString().split("T")[0];
-      setSelectedDate(todayISO);
+      setSelectedDate(null);
     }
     if (selectedTimeSlot && isPastTime(selectedTimeSlot, selectedDate)) {
       setSelectedTimeSlot(null);
@@ -876,9 +880,6 @@ export default function CheckoutModal({
                             if (next) setShowCustomTime(false);
                             return next;
                           });
-                          if (!selectedDate || isPresetDate) {
-                            setSelectedDate(todayISO);
-                          }
                         }}
                         className={`w-full h-full py-2 px-1.5 sm:px-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 ${isCustomDateActive || showCustomDate
                             ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-md ring-2 ring-[#782860]/40 scale-103"
@@ -962,9 +963,6 @@ export default function CheckoutModal({
                             if (next) setShowCustomDate(false);
                             return next;
                           });
-                          if (!selectedTimeSlot || isPresetTime) {
-                            setSelectedTimeSlot("09:00 AM");
-                          }
                         }}
                         className={`w-full h-full py-2 px-2 rounded-xl border text-center cursor-pointer flex items-center justify-center gap-1.5 transition-all duration-200 ${isCustomTimeActive || showCustomTime
                             ? "bg-gradient-to-br from-[#782860] via-[#8a2f6e] to-[#a03480] text-white border-transparent shadow-md ring-2 ring-[#782860]/40 scale-103"
@@ -1113,6 +1111,7 @@ export default function CheckoutModal({
                         transition={{ duration: 0.2 }}
                       >
                         <AddAddressForm
+                          key={editingAddress ? `edit-${editingAddress.id}` : "add-address"}
                           initialData={editingAddress || undefined}
                           onSave={async (savedAddr) => {
                             const success = editingAddress
@@ -1121,6 +1120,7 @@ export default function CheckoutModal({
                             if (success) {
                               setEditingAddress(null);
                               setShowAddAddress(false);
+                              await fetchAddresses(true);
                             }
                           }}
                           onCancel={() => {

@@ -275,7 +275,7 @@ interface AppState {
   addresses: Address[];
   addAddress: (address: Omit<Address, "id">) => void;
   removeAddress: (id: string) => void;
-  fetchAddresses: () => Promise<void>;
+  fetchAddresses: (silent?: boolean) => Promise<void>;
   addAddressAsync: (address: Omit<Address, "id"> & { localityId?: string }) => Promise<boolean>;
   updateAddressAsync: (id: string, address: Partial<Address> & { localityId?: string }) => Promise<boolean>;
   removeAddressAsync: (id: string) => Promise<boolean>;
@@ -401,14 +401,16 @@ export const useStore = create<AppState>()(
       isLoadingAddresses: false,
       isLoadingBookmarks: false,
       isLoadingBookings: false,
-      fetchAddresses: async () => {
+      fetchAddresses: async (silent = false) => {
         const token = get().token;
         if (!token) return;
         if (isTokenExpired(token)) {
           handleTokenExpiration("Your session has expired. Please sign in again.");
           return;
         }
-        set({ isLoadingAddresses: true });
+        if (!silent) {
+          set({ isLoadingAddresses: true });
+        }
         try {
           const res = await getCustomerAddressesApi(token);
           if (res.success && res.data) {
@@ -452,7 +454,7 @@ export const useStore = create<AppState>()(
           const newAddress = { ...address, id: localId };
           set((state) => ({
             addresses: [newAddress, ...state.addresses],
-            selectedAddressId: address.isDefault ? localId : (state.selectedAddressId || localId),
+            selectedAddressId: address.isDefault ? localId : state.selectedAddressId,
           }));
           toast.success("Address Saved", "Address registered for current booking session.");
         }
@@ -460,11 +462,13 @@ export const useStore = create<AppState>()(
       addAddressAsync: async (newAddr) => {
         const token = get().token;
         if (token) {
+          const rawMobile = (newAddr.recipientMobile || newAddr.recipientPhone || "").replace(/\D/g, "");
+          const cleanMobile = rawMobile.length >= 10 ? rawMobile.slice(-10) : "";
           const payload: CreateAddressPayload = {
             addressLabel: newAddr.tag || "Home",
             relationshipType: mapRelationshipToBackend(newAddr.recipientType),
-            recipientName: newAddr.recipientName,
-            recipientMobile: newAddr.recipientMobile || newAddr.recipientPhone,
+            recipientName: newAddr.recipientName || "",
+            recipientMobile: cleanMobile,
             localityId: newAddr.localityId || "",
             pincode: newAddr.pincode || "221002",
             serviceAddress: newAddr.addressLine,
@@ -474,12 +478,8 @@ export const useStore = create<AppState>()(
 
           try {
             const res = await addCustomerAddressApi(token, payload);
-            if (res.success && res.data) {
-              const frontendAddr = mapBackendAddressToFrontend(res.data);
-              set((state) => ({
-                addresses: [frontendAddr, ...state.addresses.filter((a) => a.id !== frontendAddr.id)],
-                selectedAddressId: frontendAddr.isDefault ? frontendAddr.id : (state.selectedAddressId || frontendAddr.id),
-              }));
+            if (res.success) {
+              await get().fetchAddresses(true);
               toast.success("Address Saved", "Delivery address added successfully.");
               return true;
             } else {
@@ -497,7 +497,7 @@ export const useStore = create<AppState>()(
           const frontendAddr: Address = { ...newAddr, id: localId };
           set((state) => ({
             addresses: [frontendAddr, ...state.addresses],
-            selectedAddressId: frontendAddr.isDefault ? frontendAddr.id : (state.selectedAddressId || frontendAddr.id),
+            selectedAddressId: frontendAddr.isDefault ? frontendAddr.id : state.selectedAddressId,
           }));
           toast.success("Address Saved", "Delivery address saved for this session.");
           return true;
@@ -506,25 +506,53 @@ export const useStore = create<AppState>()(
       updateAddressAsync: async (id, updatedData) => {
         const token = get().token;
         if (token) {
+          const rawMobile = (updatedData.recipientMobile || updatedData.recipientPhone || "").replace(/\D/g, "");
+          const cleanMobile = rawMobile.length >= 10 ? rawMobile.slice(-10) : "";
           const payload: UpdateAddressPayload = {
-            addressLabel: updatedData.tag,
-            relationshipType: updatedData.recipientType ? mapRelationshipToBackend(updatedData.recipientType) : undefined,
-            recipientName: updatedData.recipientName,
-            recipientMobile: updatedData.recipientMobile || updatedData.recipientPhone,
+            addressLabel: updatedData.tag || "Home",
+            relationshipType: mapRelationshipToBackend(updatedData.recipientType),
+            recipientName: updatedData.recipientName || "",
+            recipientMobile: cleanMobile,
             localityId: updatedData.localityId || "",
             pincode: updatedData.pincode || "221002",
-            serviceAddress: updatedData.addressLine,
+            serviceAddress: updatedData.addressLine || "",
             landmark: updatedData.landmark || "",
-            isPrimary: updatedData.isDefault,
+            isPrimary: updatedData.isDefault || false,
           };
 
           try {
             const res = await updateCustomerAddressApi(token, id, payload);
-            if (res.success && res.data) {
-              const updatedFrontend = mapBackendAddressToFrontend(res.data);
+            if (res.success) {
+              // 1. Immediately update store with the current user-provided data
+              const existing = get().addresses.find((a) => a.id === id);
+              const mergedUpdated: Address = {
+                ...(existing || {}),
+                id,
+                tag: updatedData.tag || existing?.tag || "Home",
+                recipientType: updatedData.recipientType || existing?.recipientType || "Self",
+                recipientName: updatedData.recipientName ?? existing?.recipientName ?? "",
+                recipientPhone: cleanMobile || updatedData.recipientPhone || existing?.recipientPhone || "",
+                recipientMobile: cleanMobile || updatedData.recipientMobile || existing?.recipientMobile || "",
+                locality: updatedData.locality || existing?.locality || "",
+                localityId: updatedData.localityId || existing?.localityId || "",
+                pincode: updatedData.pincode || existing?.pincode || "221002",
+                landmark: updatedData.landmark ?? existing?.landmark ?? "",
+                addressLine: updatedData.addressLine || existing?.addressLine || "",
+                city: updatedData.city || existing?.city || "Varanasi",
+                isDefault: updatedData.isDefault ?? existing?.isDefault ?? false,
+              };
+
               set((state) => ({
-                addresses: [updatedFrontend, ...state.addresses.filter((a) => a.id !== id)],
+                addresses: state.addresses.map((a) => {
+                  if (a.id === id) return mergedUpdated;
+                  if (updatedData.isDefault) return { ...a, isDefault: false };
+                  return a;
+                }),
               }));
+
+              // 2. Recall the GET addresses API so the store gets canonical populated data from server
+              await get().fetchAddresses(true);
+
               toast.success("Address Updated", "Delivery address updated successfully.");
               return true;
             } else {
@@ -543,7 +571,11 @@ export const useStore = create<AppState>()(
             const updated = target ? { ...target, ...updatedData } : null;
             if (!updated) return state;
             return {
-              addresses: [updated, ...state.addresses.filter((a) => a.id !== id)],
+              addresses: state.addresses.map((a) => {
+                if (a.id === id) return updated;
+                if (updatedData.isDefault) return { ...a, isDefault: false };
+                return a;
+              }),
             };
           });
           toast.success("Address Updated", "Delivery address updated.");
@@ -570,9 +602,7 @@ export const useStore = create<AppState>()(
           try {
             const res = await deleteCustomerAddressApi(token, id);
             if (res.success) {
-              set((state) => ({
-                addresses: state.addresses.filter((a) => a.id !== id),
-              }));
+              await get().fetchAddresses(true);
               toast.success("Address Removed", "Address removed from your account.");
               return true;
             } else {
@@ -1373,6 +1403,9 @@ export const useStore = create<AppState>()(
 
         set((state) => ({
           bookings: [newBooking, ...state.bookings],
+          selectedDate: null,
+          selectedTimeSlot: null,
+          selectedAddressId: null,
         }));
 
         // Send a notification
@@ -1611,7 +1644,10 @@ export const useStore = create<AppState>()(
 
             set((s) => ({
               bookings: [newBooking, ...s.bookings],
-              cart: []
+              cart: [],
+              selectedDate: null,
+              selectedTimeSlot: null,
+              selectedAddressId: null,
             }));
 
             get().addNotification(
@@ -1844,14 +1880,18 @@ export const useStore = create<AppState>()(
         cartId: state.cartId,
         cartPricing: state.cartPricing,
         packageAddonsMap: state.packageAddonsMap,
-        selectedDate: state.selectedDate,
-        selectedTimeSlot: state.selectedTimeSlot,
-        selectedAddressId: state.selectedAddressId,
         appliedCoupon: state.appliedCoupon,
         bookmarkedPackageIds: state.bookmarkedPackageIds,
         isMember: state.isMember,
         membershipTier: state.membershipTier,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.selectedDate = null;
+          state.selectedTimeSlot = null;
+          state.selectedAddressId = null;
+        }
+      },
     }
   )
 );
