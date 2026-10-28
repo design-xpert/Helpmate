@@ -32,7 +32,9 @@ export async function GET(
       status: 200,
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=86400, stale-while-revalidate=43200",
+        "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
         "Cross-Origin-Resource-Policy": "cross-origin",
       },
     });

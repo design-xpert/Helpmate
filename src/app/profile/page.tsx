@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -19,6 +19,7 @@ import {
   XCircle,
   Clock,
   ExternalLink,
+  ChevronLeft,
   ChevronRight,
   Smile,
   AlertCircle,
@@ -42,7 +43,18 @@ import {
   Film,
   UploadCloud,
   ArrowLeft,
-  FileText
+  FileText,
+  Search,
+  Filter,
+  Tag,
+  RotateCcw,
+  X,
+  ChevronDown,
+  CalendarDays,
+  PhoneCall,
+  Save,
+  CheckCircle2,
+  Sparkles
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/common/Header";
@@ -62,6 +74,9 @@ function ProfilePageContent() {
   const {
     userName,
     userPhone,
+    userAvatar,
+    userAlternatePhone,
+    userEmail: storeEmail,
     walletBalance,
     loyaltyPoints,
     bookings,
@@ -114,13 +129,19 @@ function ProfilePageContent() {
   }, [mounted, token, router, fetchCustomerProfile, fetchAddresses, fetchBookmarks, fetchBookings]);
 
   const [activeTab, setActiveTab] = useState(
-    searchParams.get("tab") === "saved" ? "bookmarks" : (searchParams.get("tab") || "dashboard")
+    searchParams.get("tab") === "saved"
+      ? "bookmarks"
+      : searchParams.get("tab") === "settings"
+        ? "profile"
+        : (searchParams.get("tab") || "bookings")
   );
 
   useEffect(() => {
     const tab = searchParams.get("tab");
     if (tab === "saved" || tab === "bookmarks") {
       setActiveTab("bookmarks");
+    } else if (tab === "settings") {
+      setActiveTab("profile");
     } else if (tab) {
       setActiveTab(tab);
     }
@@ -223,6 +244,288 @@ function ProfilePageContent() {
     }
   };
 
+  // Booking History Search and Filter States
+  const [bookingSearchQuery, setBookingSearchQuery] = useState("");
+  const [bookingCategoryFilter, setBookingCategoryFilter] = useState("all");
+  const [bookingStatusFilter, setBookingStatusFilter] = useState("all");
+  const [bookingDateFilter, setBookingDateFilter] = useState<"all" | "today" | "this_week" | "this_month" | "last_3_months" | "custom">("all");
+  const [bookingCustomStartDate, setBookingCustomStartDate] = useState("");
+  const [bookingCustomEndDate, setBookingCustomEndDate] = useState("");
+
+  // Custom Calendar State for Date Range Picker
+  const [dateFilterView, setDateFilterView] = useState<"presets" | "calendar">("presets");
+  const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth());
+  const [calendarHoverDate, setCalendarHoverDate] = useState<string | null>(null);
+
+  // Custom Dropdown Open State and Refs for Click-Outside
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
+  const categoryDropdownRef = React.useRef<HTMLDivElement>(null);
+  const dateDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
+        setIsCategoryDropdownOpen(false);
+      }
+      if (dateDropdownRef.current && !dateDropdownRef.current.contains(event.target as Node)) {
+        setIsDateDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Dynamically extract ONLY categories present in user's bookings with counts
+  const bookingCategories = React.useMemo(() => {
+    const map = new Map<string, { key: string; label: string; count: number }>();
+
+    bookings.forEach((b) => {
+      const catsInBooking = new Set<string>();
+
+      if (b.categoryName) {
+        catsInBooking.add(b.categoryName.trim());
+      }
+      b.items?.forEach((item) => {
+        if (item.categoryName) {
+          catsInBooking.add(item.categoryName.trim());
+        } else if (item.category && item.category !== "general") {
+          const formatted = item.category
+            .split("-")
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(" ");
+          catsInBooking.add(formatted);
+        }
+      });
+
+      catsInBooking.forEach((catLabel) => {
+        const lower = catLabel.toLowerCase();
+        const existing = map.get(lower);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          map.set(lower, { key: lower, label: catLabel, count: 1 });
+        }
+      });
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [bookings]);
+
+  const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const formatDateKey = (year: number, month: number, day: number): string => {
+    const m = String(month + 1).padStart(2, "0");
+    const d = String(day).padStart(2, "0");
+    return `${year}-${m}-${d}`;
+  };
+
+  const formatDisplayDate = (dateStr: string): string => {
+    if (!dateStr) return "";
+    const [y, m, d] = dateStr.split("-").map(Number);
+    if (!y || !m || !d) return dateStr;
+    const date = new Date(y, m - 1, d);
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
+
+  const formatDisplayDateRange = (startStr: string, endStr: string): string => {
+    if (!startStr && !endStr) return "Custom";
+    if (startStr && !endStr) return `From ${formatDisplayDate(startStr)}`;
+    if (!startStr && endStr) return `Up to ${formatDisplayDate(endStr)}`;
+    if (startStr === endStr) return formatDisplayDate(startStr);
+    return `${formatDisplayDate(startStr)} - ${formatDisplayDate(endStr)}`;
+  };
+
+  const getDateFilterLabel = () => {
+    if (bookingDateFilter === "all") return "All Time";
+    if (bookingDateFilter === "today") return "Today";
+    if (bookingDateFilter === "this_week") return "This Week";
+    if (bookingDateFilter === "this_month") return "This Month";
+    if (bookingDateFilter === "last_3_months") return "3 Months";
+    if (bookingDateFilter === "custom") {
+      if (bookingCustomStartDate && bookingCustomEndDate) {
+        return formatDisplayDateRange(bookingCustomStartDate, bookingCustomEndDate);
+      }
+      if (bookingCustomStartDate) return `From ${formatDisplayDate(bookingCustomStartDate)}`;
+      if (bookingCustomEndDate) return `Up to ${formatDisplayDate(bookingCustomEndDate)}`;
+      return "Custom";
+    }
+    return "All Time";
+  };
+
+  // Date parsing helper
+  const getBookingDates = (b: Booking): Date[] => {
+    const dates: Date[] = [];
+    const candidates = [b.rawBookingDate, b.date, b.rawCreatedAt, b.dateCreated];
+    for (const c of candidates) {
+      if (!c) continue;
+      const parsed = new Date(c);
+      if (!isNaN(parsed.getTime())) {
+        dates.push(parsed);
+      }
+    }
+    return dates;
+  };
+
+  const isToday = (d: Date) => {
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  };
+
+  const isThisWeek = (d: Date) => {
+    const now = new Date();
+    const diffDays = Math.abs(d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays <= 7;
+  };
+
+  const isThisMonth = (d: Date) => {
+    const now = new Date();
+    const isSameMonth = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    const diffDays = Math.abs(d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    return isSameMonth || diffDays <= 30;
+  };
+
+  const isLast3Months = (d: Date) => {
+    const now = new Date();
+    const diffDays = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays >= -7 && diffDays <= 90;
+  };
+
+  const isCustomRange = (d: Date) => {
+    if (bookingCustomStartDate) {
+      const [sy, sm, sd] = bookingCustomStartDate.split("-").map(Number);
+      const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+      if (d < start) return false;
+    }
+    if (bookingCustomEndDate) {
+      const [ey, em, ed] = bookingCustomEndDate.split("-").map(Number);
+      const end = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+      if (d > end) return false;
+    }
+    return true;
+  };
+
+  // Filter evaluation
+  const filteredBookings = React.useMemo(() => {
+    return [...bookings]
+      .filter((b) => {
+        // Search filter
+        if (bookingSearchQuery.trim()) {
+          const q = bookingSearchQuery.toLowerCase().trim();
+          const matchesId = (b.bookingNumber || "").toLowerCase().includes(q) || (b.id || "").toLowerCase().includes(q);
+          const matchesStatus = (b.status || "").toLowerCase().includes(q);
+          const matchesAddress =
+            (b.address?.addressLine || "").toLowerCase().includes(q) ||
+            (b.address?.city || "").toLowerCase().includes(q) ||
+            (b.address?.tag || "").toLowerCase().includes(q);
+          const matchesPro = (b.professional?.name || "").toLowerCase().includes(q);
+          const matchesDate = (b.date || "").toLowerCase().includes(q) || (b.timeSlot || "").toLowerCase().includes(q);
+          const matchesItems = b.items?.some((item) =>
+            (item.name || "").toLowerCase().includes(q) ||
+            (item.category || "").toLowerCase().includes(q) ||
+            (item.categoryName || "").toLowerCase().includes(q)
+          );
+          const matchesCat = (b.categoryName || "").toLowerCase().includes(q);
+
+          if (!matchesId && !matchesStatus && !matchesAddress && !matchesPro && !matchesDate && !matchesItems && !matchesCat) {
+            return false;
+          }
+        }
+
+        // Category filter
+        if (bookingCategoryFilter !== "all") {
+          const target = bookingCategoryFilter.toLowerCase().trim();
+          const targetSlug = target.replace(/[^a-z0-9]+/g, "-");
+          const targetNormalized = target.replace(/[^a-z0-9]/g, "");
+
+          const catNameMatches = (b.categoryName || "").toLowerCase().includes(target);
+          const itemsMatch = b.items?.some((item) => {
+            const itemCatName = (item.categoryName || "").toLowerCase();
+            const itemCat = (item.category || "").toLowerCase();
+            const itemCatNormalized = itemCat.replace(/[^a-z0-9]/g, "");
+
+            return (
+              itemCatName.includes(target) ||
+              target.includes(itemCatName) ||
+              itemCat.includes(targetSlug) ||
+              targetSlug.includes(itemCat) ||
+              itemCatNormalized.includes(targetNormalized)
+            );
+          });
+
+          if (!catNameMatches && !itemsMatch) {
+            return false;
+          }
+        }
+
+        // Status filter
+        if (bookingStatusFilter !== "all") {
+          if ((b.status || "").toLowerCase() !== bookingStatusFilter.toLowerCase()) {
+            return false;
+          }
+        }
+
+        // Date filter
+        if (bookingDateFilter !== "all") {
+          const dates = getBookingDates(b);
+          if (dates.length > 0) {
+            if (bookingDateFilter === "today") {
+              const isTodayMatch = dates.some(isToday) || (b.date || "").toLowerCase() === "today";
+              if (!isTodayMatch) return false;
+            } else if (bookingDateFilter === "this_week") {
+              if (!dates.some(isThisWeek)) return false;
+            } else if (bookingDateFilter === "this_month") {
+              if (!dates.some(isThisMonth)) return false;
+            } else if (bookingDateFilter === "last_3_months") {
+              if (!dates.some(isLast3Months)) return false;
+            } else if (bookingDateFilter === "custom") {
+              if (!dates.some(isCustomRange)) return false;
+            }
+          }
+        }
+
+        return true;
+      })
+      .sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime());
+  }, [
+    bookings,
+    bookingSearchQuery,
+    bookingCategoryFilter,
+    bookingStatusFilter,
+    bookingDateFilter,
+    bookingCustomStartDate,
+    bookingCustomEndDate
+  ]);
+
+  const hasActiveFilters =
+    bookingSearchQuery.trim() !== "" ||
+    bookingCategoryFilter !== "all" ||
+    bookingStatusFilter !== "all" ||
+    bookingDateFilter !== "all" ||
+    bookingCustomStartDate !== "" ||
+    bookingCustomEndDate !== "";
+
+  const handleResetFilters = () => {
+    setBookingSearchQuery("");
+    setBookingCategoryFilter("all");
+    setBookingStatusFilter("all");
+    setBookingDateFilter("all");
+    setBookingCustomStartDate("");
+    setBookingCustomEndDate("");
+    setDateFilterView("presets");
+    setIsCategoryDropdownOpen(false);
+    setIsDateDropdownOpen(false);
+  };
 
   // Address Form State
   const [showAddressForm, setShowAddressForm] = useState(false);
@@ -240,32 +543,149 @@ function ProfilePageContent() {
   ]);
   const [addFundsAmount, setAddFundsAmount] = useState("");
   const [showAddFundsModal, setShowAddFundsModal] = useState(false);
-  const [editName, setEditName] = useState(userName);
-  const [editPhone, setEditPhone] = useState(userPhone);
-  const [editEmail, setEditEmail] = useState("mukund@kvtmedia.com");
+  // Helper to extract 10 phone digits
+  const extractPhoneDigits = (val?: string) => {
+    if (!val) return "";
+    return val.replace(/\D/g, "").slice(-10);
+  };
+
+  const [editName, setEditName] = useState(userName || "");
+  const [editPhone, setEditPhone] = useState(extractPhoneDigits(userPhone) || "");
+  const [editAlternatePhone, setEditAlternatePhone] = useState(extractPhoneDigits(userAlternatePhone) || "");
+  const [editEmail, setEditEmail] = useState(storeEmail || "mukund@kvtmedia.com");
   const [editSecondaryEmail, setEditSecondaryEmail] = useState("recovery.mukund@kvtmedia.com");
-  const [avatarUrl, setAvatarUrl] = useState("https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80");
+  const [avatarUrl, setAvatarUrl] = useState(userAvatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [formErrors, setFormErrors] = useState<{ name?: string; phone?: string; alternatePhone?: string }>({});
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [whatsappUpdates, setWhatsappUpdates] = useState(true);
-  const [smsUpdates, setSmsUpdates] = useState(true);
-  const [emailUpdates, setEmailUpdates] = useState(false);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPasswordChange, setShowPasswordChange] = useState(false);
 
   useEffect(() => {
-    setEditName(userName);
-    setEditPhone(userPhone);
-  }, [userName, userPhone]);
+    setEditName(userName || "");
+    setEditPhone(extractPhoneDigits(userPhone) || "");
+    setEditAlternatePhone(extractPhoneDigits(userAlternatePhone) || "");
+    if (userAvatar) setAvatarUrl(userAvatar);
+    if (storeEmail) setEditEmail(storeEmail);
+  }, [userName, userPhone, userAlternatePhone, userAvatar, storeEmail]);
+
+  // Profile completeness score (4 key items, 25% each)
+  const profileScore = Math.min(100,
+    (editName.trim().length >= 2 ? 25 : 0) +
+    (editPhone.replace(/\D/g, "").length === 10 ? 25 : 0) +
+    (avatarUrl ? 25 : 0) +
+    (editAlternatePhone.replace(/\D/g, "").length === 10 ? 25 : 0)
+  );
+
+  const hasUnsavedChanges =
+    editName.trim() !== (userName || "").trim() ||
+    editPhone.replace(/\D/g, "") !== extractPhoneDigits(userPhone) ||
+    editAlternatePhone.replace(/\D/g, "") !== extractPhoneDigits(userAlternatePhone) ||
+    avatarUrl !== (userAvatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80") ||
+    editEmail.trim() !== (storeEmail || "mukund@kvtmedia.com");
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Please select a valid image file (JPG, PNG, or WebP).");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError("Image file size must be less than 5 MB.");
+      return;
+    }
+
+    setAvatarError(null);
+    setAvatarFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (typeof event.target?.result === "string") {
+        setAvatarUrl(event.target.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveAvatar = () => {
+    setAvatarFile(null);
+    setAvatarError(null);
+    setAvatarUrl("https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80");
+    if (avatarFileInputRef.current) {
+      avatarFileInputRef.current.value = "";
+    }
+  };
+
+  const handleSaveProfile = () => {
+    const errors: { name?: string; phone?: string; alternatePhone?: string } = {};
+
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      errors.name = "Full name is required.";
+    } else if (trimmedName.length < 2) {
+      errors.name = "Full name must be at least 2 characters.";
+    }
+
+    const cleanPrimary = editPhone.replace(/\D/g, "");
+    if (!cleanPrimary) {
+      errors.phone = "Primary mobile number is required.";
+    } else if (cleanPrimary.length !== 10) {
+      errors.phone = "Primary mobile number must be exactly 10 digits.";
+    }
+
+    const cleanAlt = editAlternatePhone.replace(/\D/g, "");
+    if (cleanAlt) {
+      if (cleanAlt.length !== 10) {
+        errors.alternatePhone = "Alternate mobile number must be exactly 10 digits.";
+      } else if (cleanAlt === cleanPrimary) {
+        errors.alternatePhone = "Alternate mobile number must be different from primary mobile.";
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      toast.error("Please fix the validation errors before saving.");
+      return;
+    }
+
+    setFormErrors({});
+    setIsSavingProfile(true);
+
+    setTimeout(() => {
+      const formattedPrimary = `+91 ${cleanPrimary.slice(0, 5)} ${cleanPrimary.slice(5)}`;
+      const formattedAlt = cleanAlt ? `+91 ${cleanAlt.slice(0, 5)} ${cleanAlt.slice(5)}` : "";
+
+      updateProfile(trimmedName, formattedPrimary, formattedAlt, avatarUrl, editEmail.trim());
+      setIsSavingProfile(false);
+      addNotification("Profile Updated", "Your profile photo and contact details have been securely updated.", "success");
+      toast.success("Profile updated successfully!");
+    }, 600);
+  };
+
+  const handleResetProfile = () => {
+    setEditName(userName || "");
+    setEditPhone(extractPhoneDigits(userPhone) || "");
+    setEditAlternatePhone(extractPhoneDigits(userAlternatePhone) || "");
+    setAvatarUrl(userAvatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80");
+    setAvatarFile(null);
+    setAvatarError(null);
+    setFormErrors({});
+    if (avatarFileInputRef.current) {
+      avatarFileInputRef.current.value = "";
+    }
+    toast.info("Changes discarded.");
+  };
 
 
 
-  // Sync tab from URL
-  useEffect(() => {
-    const tab = searchParams.get("tab");
-    if (tab) setActiveTab(tab);
-  }, [searchParams]);
+
 
   // Address Submit Handler
   const handleAddAddress = () => {
@@ -451,29 +871,62 @@ function ProfilePageContent() {
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 items-start">
 
-          {/* Profile Navigation Sidebar */}
-          <nav className="lg:col-span-3 glass-panel p-4 sm:p-6 space-y-2 shrink-0 rounded-2xl sm:rounded-3xl">
-            <div className="pb-4 sm:pb-6 border-b border-slate-100 dark:border-slate-800 text-center lg:text-left flex lg:flex-col items-center lg:items-start gap-3 sm:gap-4">
-              <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-accent-lux shadow-md shrink-0">
-                <img src={avatarUrl} alt={userName} className="w-full h-full object-cover" />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm sm:text-base text-foreground">{userName}</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5 sm:mt-1">{userPhone}</p>
-                <span className="inline-block mt-1.5 sm:mt-2 bg-gradient-to-r from-accent-lux to-secondary-lux text-white text-[8px] font-extrabold px-3 py-0.5 sm:py-1 rounded-full uppercase tracking-wider">
-                  Elite Member
+          {/* Profile Navigation Sidebar - Sticky On Desktop */}
+          <nav className="lg:col-span-3 glass-panel p-4 sm:p-6 space-y-2 shrink-0 rounded-2xl sm:rounded-3xl lg:sticky lg:top-28 z-20 self-start transition-all lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto no-scrollbar shadow-sm border border-slate-200/80 dark:border-slate-800">
+            <div className="pb-4 sm:pb-6 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center gap-3.5 sm:gap-4 text-left">
+              <div className="relative w-16 h-16 sm:w-18 sm:h-18 flex items-center justify-center shrink-0">
+                <svg className="w-full h-full absolute inset-0 -rotate-90 pointer-events-none" viewBox="0 0 72 72">
+                  <circle
+                    cx="36"
+                    cy="36"
+                    r="32"
+                    stroke="currentColor"
+                    strokeWidth="3.5"
+                    className="text-slate-200 dark:text-slate-800"
+                    fill="transparent"
+                  />
+                  <circle
+                    cx="36"
+                    cy="36"
+                    r="32"
+                    stroke="#D97706"
+                    strokeWidth="3.5"
+                    strokeDasharray={201.06}
+                    strokeDashoffset={201.06 - (201.06 * profileScore) / 100}
+                    strokeLinecap="round"
+                    className="transition-all duration-700 ease-out"
+                    fill="transparent"
+                  />
+                </svg>
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden p-0.5 bg-white dark:bg-slate-900 shadow-md relative">
+                  <img src={avatarUrl} alt={userName} className="w-full h-full object-cover rounded-full" />
+                </div>
+                <span className="absolute -bottom-1 -right-0.5 text-[8px] font-black bg-slate-900 text-white dark:bg-white dark:text-slate-950 px-1.5 py-0.5 rounded-full shadow border border-white dark:border-slate-900">
+                  {profileScore}%
                 </span>
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                <div className="flex items-center gap-1.5 justify-start">
+                  <h3 className="font-bold text-sm sm:text-base text-foreground truncate">{userName}</h3>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5 sm:mt-1 truncate">{userPhone}</p>
+                {userAlternatePhone ? (
+                  <p className="text-[9px] text-slate-400/80 truncate">Alt: {userAlternatePhone}</p>
+                ) : null}
+                <div className="flex items-center gap-2 mt-1.5 sm:mt-2 justify-start">
+                  <span className="bg-gradient-to-r from-accent-lux to-secondary-lux text-white text-[8px] font-extrabold px-3 py-0.5 sm:py-1 rounded-full uppercase tracking-wider">
+                    Elite Member
+                  </span>
+                </div>
               </div>
             </div>
 
             <div className="pt-2 sm:pt-4 flex flex-row lg:flex-col overflow-x-auto no-scrollbar gap-1.5 sm:space-y-1 pb-1 lg:pb-0">
               {[
-                // { id: "dashboard", label: "Dashboard Overview", icon: <Award className="w-4 h-4" /> },
+                { id: "profile", label: "Profile Details", icon: <User className="w-4 h-4" /> },
                 { id: "bookings", label: "Booking History", icon: <Calendar className="w-4 h-4" /> },
                 { id: "bookmarks", label: "Saved Packages", icon: <Bookmark className="w-4 h-4" /> },
-                { id: "addresses", label: "Manage Locations", icon: <MapPin className="w-4 h-4" /> },
-                // { id: "wallet", label: "Wallet & Loyalty", icon: <Wallet className="w-4 h-4" /> },
-                // { id: "settings", label: "Account Settings", icon: <Settings className="w-4 h-4" /> }
+                { id: "addresses", label: "Manage Address", icon: <MapPin className="w-4 h-4" /> },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -481,7 +934,7 @@ function ProfilePageContent() {
                     setActiveTab(tab.id);
                     router.replace(`/profile?tab=${tab.id}`, { scroll: false });
                   }}
-                  className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 rounded-xl text-xs font-bold transition-all text-left cursor-pointer shrink-0 whitespace-nowrap ${activeTab === tab.id
+                  className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 rounded-xl text-xs font-bold transition-all text-left cursor-pointer shrink-0 whitespace-nowrap ${(activeTab === tab.id || (tab.id === "profile" && activeTab === "settings"))
                     ? "bg-accent-lux text-white shadow-lg shadow-accent-lux/10"
                     : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
                     }`}
@@ -600,13 +1053,6 @@ function ProfilePageContent() {
                               <p className="text-[10px] text-slate-400 capitalize mt-0.5">{b.items[0]?.name}</p>
                             </div>
 
-                            {/* Simulator Trigger */}
-                            <button
-                              onClick={() => advanceSimulatedBooking(b.id, b.status)}
-                              className="px-4 py-2 bg-gradient-to-r from-accent-lux to-secondary-lux hover:from-accent-lux hover:to-accent-lux text-white text-[10px] font-bold tracking-wider uppercase rounded-xl flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
-                            >
-                              <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Simulate Partner Progress
-                            </button>
                           </div>
 
                           {/* Professional summary */}
@@ -661,10 +1107,18 @@ function ProfilePageContent() {
             {/* TAB: BOOKINGS HISTORY */}
             {activeTab === "bookings" && (
               <div className="space-y-6">
-                <h3 className="font-bold text-sm text-foreground">Service Booking History</h3>
-
                 {isLoadingBookings ? (
                   <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
+                          Service Booking History
+                        </h3>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Search, filter, track and review all your home service bookings and tax invoices.
+                        </p>
+                      </div>    
+                    </div>
                     {[1, 2, 3].map((n) => (
                       <div key={n} className="glass-panel p-6 space-y-4 animate-pulse">
                         <div className="flex justify-between items-center pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -682,29 +1136,643 @@ function ProfilePageContent() {
                     ))}
                   </div>
                 ) : bookings.length === 0 ? (
-                  <div className="glass-panel p-10 sm:p-16 rounded-3xl text-center flex flex-col items-center justify-center space-y-4 border border-slate-200/60 dark:border-slate-800">
-                    <div className="w-16 h-16 rounded-2xl bg-purple-50 dark:bg-purple-950/60 border border-purple-100 dark:border-purple-900/40 flex items-center justify-center text-accent-lux shadow-sm">
-                      <Calendar className="w-8 h-8" />
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
+                          Service Booking History
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-accent-lux/10 text-accent-lux">
+                            0
+                          </span>
+                        </h3>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Search, filter, track and review all your home service bookings and tax invoices.
+                        </p>
+                      </div>    
                     </div>
-                    <div className="space-y-1.5 max-w-md">
-                      <h4 className="text-base sm:text-lg font-black text-foreground">
-                        No Booked Services
-                      </h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                        You have 0 booked services in your account. Explore our verified home, repair, and lifestyle services to schedule your appointment today.
-                      </p>
+                    <div className="glass-panel p-10 sm:p-16 rounded-3xl text-center flex flex-col items-center justify-center space-y-4 border border-slate-200/60 dark:border-slate-800">
+                      <div className="w-16 h-16 rounded-2xl bg-purple-50 dark:bg-purple-950/60 border border-purple-100 dark:border-purple-900/40 flex items-center justify-center text-accent-lux shadow-sm">
+                        <Calendar className="w-8 h-8" />
+                      </div>
+                      <div className="space-y-1.5 max-w-md">
+                        <h4 className="text-base sm:text-lg font-black text-foreground">
+                          No Booked Services
+                        </h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                          You have 0 booked services in your account. Explore our verified home, repair, and lifestyle services to schedule your appointment today.
+                        </p>
+                      </div>
+                      <Link
+                        href="/#categories"
+                        className="mt-2 inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-accent-lux hover:bg-accent-lux/95 text-white text-xs font-black tracking-wide shadow-md shadow-accent-lux/20 hover:scale-105 active:scale-95 transition-all cursor-pointer font-sans"
+                      > Book Now
+                      </Link>
                     </div>
-                    <Link
-                      href="/#categories"
-                      className="mt-2 inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-accent-lux hover:bg-accent-lux/95 text-white text-xs font-black tracking-wide shadow-md shadow-accent-lux/20 hover:scale-105 active:scale-95 transition-all cursor-pointer font-sans"
-                    > Book Now
-                    </Link>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {[...bookings]
-                      .sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime())
-                      .map((b) => (
+                  <div className="space-y-5">
+                    {/* Search & Custom Filter Toolbar on Top (Sticky) */}
+                    <div className="sticky top-20 sm:top-24 lg:top-28 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-slate-800/90 shadow-md space-y-3.5">
+                      {/* Top Header: Title + Live Filtered Count */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
+                            Service Booking History
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-accent-lux/10 text-accent-lux">
+                              {filteredBookings.length === bookings.length
+                                ? bookings.length
+                                : `${filteredBookings.length} of ${bookings.length}`}
+                            </span>
+                          </h3>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            Search, filter, track and review all your home service bookings and tax invoices.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Filter Controls Row: Search + Custom Category Dropdown + Custom Date Dropdown + Reset */}
+                      <div className="flex flex-col md:flex-row gap-2.5 items-stretch md:items-center">
+                        {/* Search Input */}
+                        <div className="relative flex-1">
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={bookingSearchQuery}
+                            onChange={(e) => setBookingSearchQuery(e.target.value)}
+                            placeholder="Search by ID, package, pro, locality..."
+                            className="w-full bg-slate-50/90 dark:bg-slate-950/70 border border-slate-200/90 dark:border-slate-800 pl-9 pr-8 py-2 rounded-xl text-xs font-medium text-foreground placeholder:text-slate-400 focus:outline-none focus:border-accent-lux focus:ring-2 focus:ring-accent-lux/20 transition-all shadow-2xs"
+                          />
+                          {bookingSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setBookingSearchQuery("")}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer rounded-full hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+                              title="Clear search"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Custom Category Dropdown (Only categories that have bookings) */}
+                        <div ref={categoryDropdownRef} className="relative md:w-48 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsCategoryDropdownOpen(!isCategoryDropdownOpen);
+                              setIsDateDropdownOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                              isCategoryDropdownOpen
+                                ? "border-accent-lux ring-2 ring-accent-lux/20 bg-white dark:bg-slate-900 text-foreground shadow-sm"
+                                : bookingCategoryFilter !== "all"
+                                ? "border-accent-lux bg-accent-lux/10 text-accent-lux font-bold shadow-2xs"
+                                : "border-slate-200/90 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/70 hover:bg-white dark:hover:bg-slate-900 text-slate-700 dark:text-slate-200"
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Tag className={`w-3.5 h-3.5 shrink-0 ${bookingCategoryFilter !== "all" ? "text-accent-lux" : "text-slate-400"}`} />
+                              <span className="truncate">
+                                {bookingCategoryFilter === "all"
+                                  ? "All Categories"
+                                  : bookingCategories.find(c => c.key === bookingCategoryFilter)?.label || "Category"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                                bookingCategoryFilter !== "all"
+                                  ? "bg-accent-lux text-white shadow-2xs"
+                                  : "bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                              }`}>
+                                {bookingCategoryFilter === "all"
+                                  ? bookings.length
+                                  : bookingCategories.find(c => c.key === bookingCategoryFilter)?.count || 0}
+                              </span>
+                              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isCategoryDropdownOpen ? "rotate-180 text-accent-lux" : ""}`} />
+                            </div>
+                          </button>
+
+                          <AnimatePresence>
+                            {isCategoryDropdownOpen && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                                transition={{ duration: 0.15 }}
+                                className="absolute left-0 right-0 md:left-auto md:w-56 mt-2 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-2xl p-1.5 space-y-1 max-h-64 overflow-y-auto"
+                              >
+                                <div className="px-2.5 py-1.5 text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center justify-between border-b border-slate-100 dark:border-slate-800">
+                                  <span>Categories with Bookings</span>
+                                  <span className="text-[9px] text-accent-lux font-bold">{bookingCategories.length} active</span>
+                                </div>
+
+                                {/* All Categories Option */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setBookingCategoryFilter("all");
+                                    setIsCategoryDropdownOpen(false);
+                                  }}
+                                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left ${
+                                    bookingCategoryFilter === "all"
+                                      ? "bg-accent-lux text-white font-bold shadow-xs"
+                                      : "hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className={`w-2 h-2 rounded-full ${bookingCategoryFilter === "all" ? "bg-white" : "bg-slate-300 dark:bg-slate-600"}`} />
+                                    <span>All Categories</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                                      bookingCategoryFilter === "all" ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                                    }`}>
+                                      {bookings.length}
+                                    </span>
+                                    {bookingCategoryFilter === "all" && <Check className="w-3.5 h-3.5 text-white" />}
+                                  </div>
+                                </button>
+
+                                {/* Only Categories with Bookings */}
+                                {bookingCategories.map((cat) => {
+                                  const isSelected = bookingCategoryFilter === cat.key;
+                                  return (
+                                    <button
+                                      key={cat.key}
+                                      type="button"
+                                      onClick={() => {
+                                        setBookingCategoryFilter(cat.key);
+                                        setIsCategoryDropdownOpen(false);
+                                      }}
+                                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left ${
+                                        isSelected
+                                          ? "bg-accent-lux text-white font-bold shadow-xs"
+                                          : "hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300"
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? "bg-white" : "bg-accent-lux"}`} />
+                                        <span className="truncate">{cat.label}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                                          isSelected ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                                        }`}>
+                                          {cat.count}
+                                        </span>
+                                        {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+
+                        {/* Custom Date Dropdown */}
+                        <div ref={dateDropdownRef} className="relative md:w-44 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextOpen = !isDateDropdownOpen;
+                              setIsDateDropdownOpen(nextOpen);
+                              setIsCategoryDropdownOpen(false);
+                              if (nextOpen) {
+                                if (bookingDateFilter === "custom") {
+                                  setDateFilterView("calendar");
+                                  if (bookingCustomStartDate) {
+                                    const [y, m] = bookingCustomStartDate.split("-").map(Number);
+                                    if (y && m) {
+                                      setCalendarYear(y);
+                                      setCalendarMonth(m - 1);
+                                    }
+                                  }
+                                } else {
+                                  setDateFilterView("presets");
+                                }
+                              }
+                            }}
+                            className={`w-full flex items-center justify-between gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                              isDateDropdownOpen
+                                ? "border-accent-lux ring-2 ring-accent-lux/20 bg-white dark:bg-slate-900 text-foreground shadow-sm"
+                                : bookingDateFilter !== "all"
+                                ? "border-accent-lux bg-accent-lux/10 text-accent-lux font-bold shadow-2xs"
+                                : "border-slate-200/90 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/70 hover:bg-white dark:hover:bg-slate-900 text-slate-700 dark:text-slate-200"
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Calendar className={`w-3.5 h-3.5 shrink-0 ${bookingDateFilter !== "all" ? "text-accent-lux" : "text-slate-400"}`} />
+                              <span className="truncate">{getDateFilterLabel()}</span>
+                            </div>
+                            <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${isDateDropdownOpen ? "rotate-180 text-accent-lux" : ""}`} />
+                          </button>
+
+                          <AnimatePresence>
+                            {isDateDropdownOpen && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                                transition={{ duration: 0.15 }}
+                                className={`absolute right-0 mt-2 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-2xl p-2.5 transition-all ${
+                                  dateFilterView === "presets" ? "w-48 sm:w-52" : "w-72 max-w-[calc(100vw-2rem)]"
+                                }`}
+                              >
+                                {dateFilterView === "presets" ? (
+                                  <div className="space-y-1">
+                                    <div className="px-2 py-1 text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                                      <span>Filter by Date</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setIsDateDropdownOpen(false)}
+                                        className="p-0.5 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+
+                                    <div className="space-y-0.5 pt-0.5">
+                                      {[
+                                        { id: "all", label: "All Time" },
+                                        { id: "today", label: "Today" },
+                                        { id: "this_week", label: "This Week" },
+                                        { id: "this_month", label: "This Month" },
+                                        { id: "last_3_months", label: "3 Months" },
+                                        { id: "custom", label: "Custom" },
+                                      ].map((preset) => {
+                                        const isSelected = bookingDateFilter === preset.id;
+                                        return (
+                                          <button
+                                            key={preset.id}
+                                            type="button"
+                                            onClick={() => {
+                                              if (preset.id === "custom") {
+                                                setBookingDateFilter("custom");
+                                                setDateFilterView("calendar");
+                                                if (bookingCustomStartDate) {
+                                                  const [y, m] = bookingCustomStartDate.split("-").map(Number);
+                                                  if (y && m) {
+                                                    setCalendarYear(y);
+                                                    setCalendarMonth(m - 1);
+                                                  }
+                                                } else {
+                                                  const now = new Date();
+                                                  setCalendarYear(now.getFullYear());
+                                                  setCalendarMonth(now.getMonth());
+                                                }
+                                              } else {
+                                                setBookingDateFilter(preset.id as any);
+                                                setBookingCustomStartDate("");
+                                                setBookingCustomEndDate("");
+                                                setIsDateDropdownOpen(false);
+                                              }
+                                            }}
+                                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-all cursor-pointer ${
+                                              isSelected
+                                                ? "bg-accent-lux text-white font-bold shadow-xs"
+                                                : "hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300"
+                                            }`}
+                                          >
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              {preset.id === "custom" && (
+                                                <CalendarDays className={`w-3.5 h-3.5 shrink-0 ${isSelected ? "text-white" : "text-accent-lux"}`} />
+                                              )}
+                                              <span className="text-xs font-semibold">{preset.label}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0 ml-1.5">
+                                              {preset.id === "custom" && bookingCustomStartDate && bookingCustomEndDate && (
+                                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                                                  isSelected ? "bg-white/20 text-white" : "bg-accent-lux/10 text-accent-lux"
+                                                }`}>
+                                                  {formatDisplayDate(bookingCustomStartDate)} - {formatDisplayDate(bookingCustomEndDate)}
+                                                </span>
+                                              )}
+                                              {isSelected && <Check className="w-3 h-3 text-white" />}
+                                              {preset.id === "custom" && (
+                                                <ChevronRight className={`w-3.5 h-3.5 ${isSelected ? "text-white/80" : "text-slate-400"}`} />
+                                              )}
+                                            </div>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  /* Custom Date Range Calendar View */
+                                  <div className="space-y-2">
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
+                                      <button
+                                        type="button"
+                                        onClick={() => setDateFilterView("presets")}
+                                        className="flex items-center gap-0.5 text-[11px] font-bold text-accent-lux hover:opacity-80 transition-opacity cursor-pointer"
+                                      >
+                                        <ChevronLeft className="w-3.5 h-3.5" />
+                                        <span>Presets</span>
+                                      </button>
+                                      <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">
+                                        Custom Range
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setIsDateDropdownOpen(false)}
+                                        className="p-0.5 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+
+                                    {/* Month Navigation */}
+                                    <div className="flex items-center justify-between px-0.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (calendarMonth === 0) {
+                                            setCalendarMonth(11);
+                                            setCalendarYear((y) => y - 1);
+                                          } else {
+                                            setCalendarMonth((m) => m - 1);
+                                          }
+                                        }}
+                                        className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                                        title="Previous Month"
+                                      >
+                                        <ChevronLeft className="w-3.5 h-3.5" />
+                                      </button>
+                                      <div className="text-xs font-bold text-foreground">
+                                        {MONTH_NAMES[calendarMonth]} {calendarYear}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (calendarMonth === 11) {
+                                            setCalendarMonth(0);
+                                            setCalendarYear((y) => y + 1);
+                                          } else {
+                                            setCalendarMonth((m) => m + 1);
+                                          }
+                                        }}
+                                        className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                                        title="Next Month"
+                                      >
+                                        <ChevronRight className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+
+                                    {/* Weekdays Row */}
+                                    <div className="grid grid-cols-7 gap-0.5 text-center">
+                                      {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+                                        <div key={day} className="text-[9px] font-black uppercase text-slate-400 py-0.5">
+                                          {day}
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    {/* Calendar Days Grid */}
+                                    {(() => {
+                                      const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+                                      const firstDayOfWeek = new Date(calendarYear, calendarMonth, 1).getDay();
+                                      const todayDateKey = formatDateKey(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+
+                                      const handleCalendarDateClick = (dateStr: string) => {
+                                        if (!bookingCustomStartDate || (bookingCustomStartDate && bookingCustomEndDate)) {
+                                          setBookingCustomStartDate(dateStr);
+                                          setBookingCustomEndDate("");
+                                        } else if (bookingCustomStartDate && !bookingCustomEndDate) {
+                                          if (dateStr < bookingCustomStartDate) {
+                                            setBookingCustomStartDate(dateStr);
+                                          } else {
+                                            setBookingCustomEndDate(dateStr);
+                                          }
+                                        }
+                                      };
+
+                                      return (
+                                        <div
+                                          className="grid grid-cols-7 gap-y-0.5 gap-x-0"
+                                          onMouseLeave={() => setCalendarHoverDate(null)}
+                                        >
+                                          {Array.from({ length: firstDayOfWeek }).map((_, i) => (
+                                            <div key={`empty-${i}`} className="h-7 w-full" />
+                                          ))}
+                                          {Array.from({ length: daysInMonth }, (_, i) => {
+                                            const dayNum = i + 1;
+                                            const dateStr = formatDateKey(calendarYear, calendarMonth, dayNum);
+                                            const isStart = bookingCustomStartDate === dateStr;
+                                            const isEnd = bookingCustomEndDate === dateStr;
+
+                                            const hoverEnd =
+                                              !bookingCustomEndDate &&
+                                              bookingCustomStartDate &&
+                                              calendarHoverDate &&
+                                              calendarHoverDate >= bookingCustomStartDate
+                                                ? calendarHoverDate
+                                                : null;
+                                            const effectiveEnd = bookingCustomEndDate || hoverEnd;
+
+                                            const isInRange = Boolean(
+                                              bookingCustomStartDate &&
+                                              effectiveEnd &&
+                                              dateStr > bookingCustomStartDate &&
+                                              dateStr < effectiveEnd
+                                            );
+
+                                            const isHoverTarget = Boolean(
+                                              !bookingCustomEndDate &&
+                                              bookingCustomStartDate &&
+                                              calendarHoverDate === dateStr &&
+                                              dateStr >= bookingCustomStartDate
+                                            );
+
+                                            const isTodayDate = dateStr === todayDateKey;
+
+                                            return (
+                                              <div
+                                                key={dateStr}
+                                                className={`h-7 w-full flex items-center justify-center relative transition-colors ${
+                                                  isInRange ? "bg-accent-lux/15 dark:bg-accent-lux/25" : ""
+                                                } ${
+                                                  isStart && effectiveEnd && effectiveEnd !== bookingCustomStartDate
+                                                    ? "bg-gradient-to-r from-transparent to-accent-lux/15 dark:to-accent-lux/25 rounded-l-md"
+                                                    : ""
+                                                } ${
+                                                  (isEnd || isHoverTarget) && bookingCustomStartDate && bookingCustomStartDate !== dateStr
+                                                    ? "bg-gradient-to-l from-transparent to-accent-lux/15 dark:to-accent-lux/25 rounded-r-md"
+                                                    : ""
+                                                }`}
+                                                onMouseEnter={() => {
+                                                  if (bookingCustomStartDate && !bookingCustomEndDate) {
+                                                    setCalendarHoverDate(dateStr);
+                                                  }
+                                                }}
+                                              >
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleCalendarDateClick(dateStr)}
+                                                  className={`w-6.5 h-6.5 rounded-lg flex items-center justify-center text-[11px] font-semibold transition-all cursor-pointer ${
+                                                    isStart || isEnd
+                                                      ? "bg-accent-lux text-white font-bold shadow-xs scale-105 z-10"
+                                                      : isHoverTarget
+                                                      ? "border border-accent-lux text-accent-lux font-bold z-10"
+                                                      : isInRange
+                                                      ? "text-accent-lux font-bold hover:bg-accent-lux/30"
+                                                      : isTodayDate
+                                                      ? "border border-accent-lux/60 text-accent-lux font-bold hover:bg-slate-100 dark:hover:bg-slate-800"
+                                                      : "text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                                  }`}
+                                                >
+                                                  {dayNum}
+                                                </button>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      );
+                                    })()}
+
+                                    {/* Quick Shortcut Tags */}
+                                    <div className="flex items-center gap-1 flex-wrap pt-1.5 border-t border-slate-100 dark:border-slate-800">
+                                      <span className="text-[9px] font-bold uppercase text-slate-400 mr-0.5">Quick:</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const now = new Date();
+                                          const past7 = new Date();
+                                          past7.setDate(now.getDate() - 7);
+                                          setBookingCustomStartDate(formatDateKey(past7.getFullYear(), past7.getMonth(), past7.getDate()));
+                                          setBookingCustomEndDate(formatDateKey(now.getFullYear(), now.getMonth(), now.getDate()));
+                                          setCalendarYear(now.getFullYear());
+                                          setCalendarMonth(now.getMonth());
+                                        }}
+                                        className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-accent-lux/10 hover:text-accent-lux text-[9px] font-bold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                                      >
+                                        Last 7 Days
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const now = new Date();
+                                          const past30 = new Date();
+                                          past30.setDate(now.getDate() - 30);
+                                          setBookingCustomStartDate(formatDateKey(past30.getFullYear(), past30.getMonth(), past30.getDate()));
+                                          setBookingCustomEndDate(formatDateKey(now.getFullYear(), now.getMonth(), now.getDate()));
+                                          setCalendarYear(now.getFullYear());
+                                          setCalendarMonth(now.getMonth());
+                                        }}
+                                        className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-accent-lux/10 hover:text-accent-lux text-[9px] font-bold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                                      >
+                                        Last 30 Days
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const now = new Date();
+                                          const first = new Date(now.getFullYear(), now.getMonth(), 1);
+                                          const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                                          setBookingCustomStartDate(formatDateKey(first.getFullYear(), first.getMonth(), first.getDate()));
+                                          setBookingCustomEndDate(formatDateKey(last.getFullYear(), last.getMonth(), last.getDate()));
+                                          setCalendarYear(now.getFullYear());
+                                          setCalendarMonth(now.getMonth());
+                                        }}
+                                        className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-accent-lux/10 hover:text-accent-lux text-[9px] font-bold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                                      >
+                                        This Month
+                                      </button>
+                                    </div>
+
+                                    {/* Action Bar */}
+                                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-1.5">
+                                      <div className="min-w-0">
+                                        <div className="text-[9px] uppercase font-bold text-slate-400">Selected</div>
+                                        <div className="text-[11px] font-bold text-foreground truncate">
+                                          {bookingCustomStartDate && bookingCustomEndDate ? (
+                                            `${formatDisplayDate(bookingCustomStartDate)} — ${formatDisplayDate(bookingCustomEndDate)}`
+                                          ) : bookingCustomStartDate ? (
+                                            <span className="text-accent-lux">Pick end date...</span>
+                                          ) : (
+                                            <span className="text-slate-400">Pick range</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        {(bookingCustomStartDate || bookingCustomEndDate) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setBookingCustomStartDate("");
+                                              setBookingCustomEndDate("");
+                                            }}
+                                            className="px-2 py-1 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 text-[10px] font-bold transition-colors cursor-pointer"
+                                          >
+                                            Clear
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (bookingCustomStartDate && !bookingCustomEndDate) {
+                                              setBookingCustomEndDate(bookingCustomStartDate);
+                                            }
+                                            setIsDateDropdownOpen(false);
+                                          }}
+                                          disabled={!bookingCustomStartDate}
+                                          className="px-2.5 py-1 rounded-lg bg-accent-lux hover:bg-accent-lux/95 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[10px] font-bold cursor-pointer shadow-xs transition-all active:scale-95"
+                                        >
+                                          Apply Range
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+
+                        {/* Reset Filters button */}
+                        {hasActiveFilters && (
+                          <button
+                            type="button"
+                            onClick={handleResetFilters}
+                            className="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer shrink-0 active:scale-95"
+                            title="Reset all filters"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Reset</span>
+                          </button>
+                        )}
+                      </div>
+
+                    
+                    </div>
+
+                    {/* Bookings List or Empty Search State */}
+                    {filteredBookings.length === 0 ? (
+                      <div className="glass-panel p-10 sm:p-14 rounded-3xl text-center flex flex-col items-center justify-center space-y-3.5 border border-slate-200/60 dark:border-slate-800">
+                        <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shadow-xs">
+                          <Search className="w-6 h-6" />
+                        </div>
+                        <div className="space-y-1 max-w-sm">
+                          <h4 className="text-sm sm:text-base font-extrabold text-foreground">
+                            No Bookings Match Your Filters
+                          </h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                            No service bookings matched your search query or filter selection. Try adjusting the keywords or resetting filters.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleResetFilters}
+                          className="mt-1 inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-accent-lux hover:bg-accent-lux/95 text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Clear Filters</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {filteredBookings.map((b) => (
                         <div key={b.id} className="glass-panel p-6 space-y-4">
                           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
                             <div>
@@ -1053,10 +2121,12 @@ function ProfilePageContent() {
                           })()}
                         </div>
                       ))}
-                  </div>
-                )}
-              </div>
-            )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
             {/* TAB: MANAGE LOCATIONS */}
             {activeTab === "addresses" && (
@@ -1603,182 +2673,348 @@ function ProfilePageContent() {
               </div>
             )}
 
-            {/* TAB: SETTINGS */}
-            {activeTab === "settings" && (
-              <div className="glass-panel p-6 sm:p-8 space-y-8 text-left">
-                <div>
-                  <h3 className="font-extrabold text-base text-foreground tracking-tight flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-accent-lux" /> Account &amp; Privacy Control
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-1">Configure account settings, security updates, and push parameters.</p>
-                </div>
-
-                {/* Avatar and Profile Strength banner */}
-                <div className="flex flex-col sm:flex-row gap-6 items-center border-b border-slate-100 dark:border-slate-800/80 pb-6">
-                  <div className="relative group cursor-pointer w-20 h-20 rounded-full overflow-hidden border-4 border-accent-lux shadow-lg shrink-0">
-                    <img src={avatarUrl} alt={userName} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Camera className="w-5 h-5 text-white" />
+            {/* TAB: PROFILE & SETTINGS */}
+            {(activeTab === "settings" || activeTab === "profile") && (
+              <div className="glass-panel p-5 sm:p-8 space-y-7 text-left">
+                {/* Header with Account Status */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800/80">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-2xl bg-accent-lux/10 text-accent-lux border border-accent-lux/20 shrink-0">
+                      <User className="w-5 h-5 sm:w-6 sm:h-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-base sm:text-lg text-foreground tracking-tight flex items-center gap-2">
+                        Profile &amp; Account Details
+                      </h3>
+                      <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
+                        Manage your profile image, legal name, primary mobile, and backup emergency number.
+                      </p>
                     </div>
                   </div>
-                  <div className="space-y-1 w-full text-center sm:text-left">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <h4 className="font-bold text-sm text-foreground">Profile Completion Score</h4>
-                      <span className="text-[10px] font-extrabold text-success-lux">75% Completed</span>
-                    </div>
-                    <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-success-lux h-full rounded-full w-3/4" />
-                    </div>
-                    <p className="text-[10px] text-slate-450 pt-1">Add a secondary backup email to achieve 100% account security score.</p>
+
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Active Customer
+                    </span>
+                    {hasUnsavedChanges && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                        Unsaved
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                {/* Account Details Form */}
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    {/* Full Name */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase font-extrabold text-muted-lux tracking-wider flex items-center gap-1">
-                        <User className="w-3.5 h-3.5 text-accent-lux" /> Full Name
-                      </label>
+                {/* Profile Photo Upload Card with Integrated Circular Progress Meter */}
+                <div className="p-5 sm:p-6 rounded-2xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs uppercase font-extrabold text-muted-lux tracking-wider flex items-center gap-1.5">
+                        <Camera className="w-4 h-4 text-accent-lux" /> Profile Photo &amp; Completion
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Upload your photo. The progress ring reflects your profile completion status.
+                      </p>
+                    </div>
+                  </div>
+
+                  {avatarError && (
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{avatarError}</span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 pt-1">
+                    {/* Circular Progress Ring Around Profile Image */}
+                    <div className="relative w-32 h-32 sm:w-36 sm:h-36 flex items-center justify-center shrink-0">
+                      {/* SVG Circular Progress Track */}
+                      <svg className="w-full h-full absolute inset-0 -rotate-90 pointer-events-none" viewBox="0 0 140 140">
+                        <defs>
+                          <linearGradient id="avatarProgressRingGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#f59e0b" />
+                            <stop offset="60%" stopColor="#eab308" />
+                            <stop offset="100%" stopColor="#10b981" />
+                          </linearGradient>
+                        </defs>
+                        {/* Background track circle */}
+                        <circle
+                          cx="70"
+                          cy="70"
+                          r="62"
+                          stroke="currentColor"
+                          strokeWidth="5"
+                          className="text-slate-200 dark:text-slate-800"
+                          fill="transparent"
+                        />
+                        {/* Dynamic progress circle */}
+                        <circle
+                          cx="70"
+                          cy="70"
+                          r="62"
+                          stroke="url(#avatarProgressRingGradient)"
+                          strokeWidth="6"
+                          strokeDasharray={389.56}
+                          strokeDashoffset={389.56 - (389.56 * profileScore) / 100}
+                          strokeLinecap="round"
+                          className="transition-all duration-700 ease-out"
+                          fill="transparent"
+                        />
+                      </svg>
+
+                      {/* Avatar Image Circle inside the Ring */}
+                      <div
+                        onClick={() => avatarFileInputRef.current?.click()}
+                        className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden p-1 bg-white dark:bg-slate-950 shadow-md cursor-pointer relative group"
+                        title="Click to change photo"
+                      >
+                        <img
+                          src={avatarUrl}
+                          alt={editName || "User avatar"}
+                          className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-1 rounded-full bg-black/45 backdrop-blur-[1px] flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-white">
+                          <Camera className="w-5 h-5 mb-0.5" />
+                          <span className="text-[9px] font-bold">Change</span>
+                        </div>
+                      </div>
+
+                      {/* Camera Button at Top-Right of circle */}
+                      <button
+                        type="button"
+                        onClick={() => avatarFileInputRef.current?.click()}
+                        className="absolute top-0 right-0 p-2 rounded-full bg-accent-lux text-white shadow-lg hover:scale-110 active:scale-95 transition-all cursor-pointer border-2 border-white dark:border-slate-900 z-10"
+                        title="Upload new photo"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Profile Percentage Pill Badge directly on Profile Image Circle */}
+                      <div
+                        className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-slate-900 text-white dark:bg-white dark:text-slate-950 text-[10px] sm:text-[11px] font-black shadow-lg border-2 border-white dark:border-slate-900 whitespace-nowrap flex items-center gap-1 z-10 select-none"
+                        title={`${profileScore}% profile completed`}
+                      >
+                        <span>{profileScore}%</span>
+                        {profileScore === 100 && (
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Upload Controls & Format Details */}
+                    <div className="flex-1 text-center sm:text-left space-y-3 pt-2">
+                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => avatarFileInputRef.current?.click()}
+                          className="px-4 py-2.5 rounded-xl bg-accent-lux hover:bg-accent-lux/90 text-white text-xs font-bold shadow-md shadow-accent-lux/10 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                        >
+                          <UploadCloud className="w-4 h-4" />
+                          <span>Upload New Photo</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRemoveAvatar}
+                          className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-900 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Remove</span>
+                        </button>
+                      </div>
+
+                      <div className="space-y-1 text-[11px] text-slate-400">
+                        <p className="flex items-center justify-center sm:justify-start gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-accent-lux shrink-0" />
+                          Recommended 1:1 square aspect ratio, minimum 200x200px.
+                        </p>
+                        <p className="flex items-center justify-center sm:justify-start gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-accent-lux shrink-0" />
+                          Supports JPG, PNG, or WebP. Maximum size 5 MB.
+                        </p>
+                      </div>
+
+                      {/* Hidden File Input */}
                       <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-4 py-2.5 rounded-xl text-xs text-foreground focus:outline-none focus:border-accent-lux"
+                        ref={avatarFileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        onChange={handleAvatarChange}
+                        className="hidden"
                       />
                     </div>
+                  </div>
+                </div>
 
-                    {/* Mobile Line */}
+                {/* Account Details Form (Name, Mobile, Alternate Mobile, Email) */}
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
+                    {/* 1. FULL NAME */}
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center">
                         <label className="text-[10px] uppercase font-extrabold text-muted-lux tracking-wider flex items-center gap-1">
-                          <Smartphone className="w-3.5 h-3.5 text-accent-lux" /> Mobile Line
+                          <User className="w-3.5 h-3.5 text-accent-lux" /> Full Name <span className="text-rose-500">*</span>
                         </label>
-                        <span className="text-[8px] bg-emerald-550/10 text-emerald-600 dark:text-emerald-500 font-extrabold uppercase px-2 py-0.5 rounded tracking-wide flex items-center gap-0.5">
+                        <span className="text-[9px] text-slate-400 font-bold">{editName.length}/50</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          maxLength={50}
+                          value={editName}
+                          onChange={(e) => {
+                            setEditName(e.target.value);
+                            if (formErrors.name) setFormErrors((prev) => ({ ...prev, name: undefined }));
+                          }}
+                          placeholder="e.g. Rohan Verma"
+                          className={`w-full bg-slate-50 dark:bg-slate-950 border ${formErrors.name ? "border-rose-500 focus:ring-rose-500/20" : "border-slate-200 dark:border-slate-800 focus:border-accent-lux focus:ring-accent-lux/20"} px-4 py-3 rounded-xl text-xs sm:text-sm text-foreground focus:outline-none focus:ring-2 transition-all`}
+                        />
+                      </div>
+                      {formErrors.name && (
+                        <p className="text-[10px] text-rose-500 flex items-center gap-1 pt-0.5">
+                          <AlertCircle className="w-3 h-3" /> {formErrors.name}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 2. PRIMARY MOBILE NUMBER */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] uppercase font-extrabold text-muted-lux tracking-wider flex items-center gap-1">
+                          <Smartphone className="w-3.5 h-3.5 text-accent-lux" /> Mobile Number <span className="text-rose-500">*</span>
+                        </label>
+                        <span className="text-[9px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-extrabold uppercase px-2 py-0.5 rounded-full flex items-center gap-0.5">
                           <Check className="w-2.5 h-2.5" /> OTP Verified
                         </span>
                       </div>
-                      <input
-                        type="text"
-                        value={editPhone}
-                        onChange={(e) => setEditPhone(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-4 py-2.5 rounded-xl text-xs text-foreground focus:outline-none focus:border-accent-lux"
-                      />
+                      <div className={`relative flex rounded-xl overflow-hidden border ${formErrors.phone ? "border-rose-500 focus-within:ring-rose-500/20" : "border-slate-200 dark:border-slate-800 focus-within:border-accent-lux focus-within:ring-accent-lux/20"} focus-within:ring-2 bg-slate-50 dark:bg-slate-950 transition-all`}>
+                        <div className="flex items-center gap-1.5 px-3 bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-bold text-xs select-none border-r border-slate-200 dark:border-slate-800 shrink-0">
+                          <span>🇮🇳</span>
+                          <span>+91</span>
+                        </div>
+                        <input
+                          type="tel"
+                          maxLength={10}
+                          value={editPhone}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                            setEditPhone(val);
+                            if (formErrors.phone) setFormErrors((prev) => ({ ...prev, phone: undefined }));
+                          }}
+                          placeholder="98765 01928"
+                          className="w-full bg-transparent px-3.5 py-3 text-xs sm:text-sm text-foreground focus:outline-none tracking-wide"
+                        />
+                      </div>
+                      {formErrors.phone && (
+                        <p className="text-[10px] text-rose-500 flex items-center gap-1 pt-0.5">
+                          <AlertCircle className="w-3 h-3" /> {formErrors.phone}
+                        </p>
+                      )}
                     </div>
 
-                    {/* Primary Email */}
+                    {/* 3. ALTERNATE MOBILE NUMBER */}
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center">
                         <label className="text-[10px] uppercase font-extrabold text-muted-lux tracking-wider flex items-center gap-1">
-                          <Mail className="w-3.5 h-3.5 text-accent-lux" /> Primary Email Address
+                          <PhoneCall className="w-3.5 h-3.5 text-accent-lux" /> Alternate Mobile Number
                         </label>
-                        <span className="text-[8px] bg-emerald-550/10 text-emerald-600 dark:text-emerald-500 font-extrabold uppercase px-2 py-0.5 rounded tracking-wide flex items-center gap-0.5">
-                          <Check className="w-2.5 h-2.5" /> Primary &amp; Verified
+                        <span className="text-[9px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold uppercase px-2 py-0.5 rounded-full">
+                          Backup Contact
                         </span>
+                      </div>
+                      <div className={`relative flex rounded-xl overflow-hidden border ${formErrors.alternatePhone ? "border-rose-500 focus-within:ring-rose-500/20" : "border-slate-200 dark:border-slate-800 focus-within:border-accent-lux focus-within:ring-accent-lux/20"} focus-within:ring-2 bg-slate-50 dark:bg-slate-950 transition-all`}>
+                        <div className="flex items-center gap-1.5 px-3 bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-bold text-xs select-none border-r border-slate-200 dark:border-slate-800 shrink-0">
+                          <span>🇮🇳</span>
+                          <span>+91</span>
+                        </div>
+                        <input
+                          type="tel"
+                          maxLength={10}
+                          value={editAlternatePhone}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                            setEditAlternatePhone(val);
+                            if (formErrors.alternatePhone) setFormErrors((prev) => ({ ...prev, alternatePhone: undefined }));
+                          }}
+                          placeholder="e.g. 98765 43210"
+                          className="w-full bg-transparent px-3.5 py-3 text-xs sm:text-sm text-foreground focus:outline-none tracking-wide"
+                        />
+                        {editAlternatePhone && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditAlternatePhone("");
+                              if (formErrors.alternatePhone) setFormErrors((prev) => ({ ...prev, alternatePhone: undefined }));
+                            }}
+                            className="px-3 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                            title="Clear alternate number"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      {formErrors.alternatePhone && (
+                        <p className="text-[10px] text-rose-500 flex items-center gap-1 pt-0.5">
+                          <AlertCircle className="w-3 h-3" /> {formErrors.alternatePhone}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 4. EMAIL ADDRESS */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] uppercase font-extrabold text-muted-lux tracking-wider flex items-center gap-1">
+                          <Mail className="w-3.5 h-3.5 text-accent-lux" /> Email Address
+                        </label>
+                        <span className="text-[9px] text-slate-400 font-bold uppercase">Official Invoices</span>
                       </div>
                       <input
                         type="email"
                         value={editEmail}
                         onChange={(e) => setEditEmail(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-4 py-2.5 rounded-xl text-xs text-foreground focus:outline-none focus:border-accent-lux"
-                      />
-                    </div>
-
-                    {/* Secondary Email */}
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-center">
-                        <label className="text-[10px] uppercase font-extrabold text-muted-lux tracking-wider flex items-center gap-1">
-                          <Mail className="w-3.5 h-3.5 text-accent-lux" /> Secondary / Recovery Email
-                        </label>
-                        <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wide">
-                          Optional Recovery
-                        </span>
-                      </div>
-                      <input
-                        type="email"
-                        value={editSecondaryEmail}
-                        onChange={(e) => setEditSecondaryEmail(e.target.value)}
-                        placeholder="recovery.email@mail.com"
-                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-4 py-2.5 rounded-xl text-xs text-foreground focus:outline-none focus:border-accent-lux"
+                        placeholder="user@example.com"
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-4 py-3 rounded-xl text-xs sm:text-sm text-foreground focus:outline-none focus:border-accent-lux focus:ring-2 focus:ring-accent-lux/20 transition-all"
                       />
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      if (!editName.trim() || !editPhone.trim()) return;
-                      setIsSavingProfile(true);
-                      setTimeout(() => {
-                        updateProfile(editName.trim(), editPhone.trim());
-                        setIsSavingProfile(false);
-                        addNotification("Profile Updated", "Your modifications have been securely saved.", "success");
-                      }, 1000);
-                    }}
-                    disabled={isSavingProfile}
-                    className="bg-accent-lux hover:bg-accent-lux/95 text-white font-extrabold text-[10px] uppercase tracking-wider px-6 py-3 rounded-full shadow-md cursor-pointer flex items-center gap-1.5 mt-2 transition-transform hover:scale-[1.02] disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {isSavingProfile ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving Changes...
-                      </>
-                    ) : (
-                      "Save Profile Details"
+                  {/* Save and Discard Actions Bar */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleSaveProfile}
+                        disabled={isSavingProfile}
+                        className="bg-gradient-to-r from-accent-lux to-secondary-lux hover:opacity-95 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider px-6 sm:px-8 py-3 rounded-xl shadow-lg shadow-accent-lux/20 cursor-pointer flex items-center gap-2 transition-transform hover:scale-[1.02] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {isSavingProfile ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" /> Saving Changes...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4" /> Save Profile Details
+                          </>
+                        )}
+                      </button>
+
+                      {hasUnsavedChanges && (
+                        <button
+                          type="button"
+                          onClick={handleResetProfile}
+                          disabled={isSavingProfile}
+                          className="px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" /> Discard
+                        </button>
+                      )}
+                    </div>
+
+                    {hasUnsavedChanges && (
+                      <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                        Unsaved modifications
+                      </span>
                     )}
-                  </button>
-                </div>
-
-                {/* Notifications Panel */}
-                <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800/80">
-                  <h4 className="text-xs uppercase font-extrabold text-muted-lux tracking-wider flex items-center gap-1.5">
-                    <Bell className="w-4 h-4 text-accent-lux" /> Alert Preferences
-                  </h4>
-                  <p className="text-xs text-slate-550 leading-relaxed">
-                    Select communication channels to receive real-time updates regarding service simulation alerts, ETAs, and coupons.
-                  </p>
-
-                  <div className="space-y-3">
-                    {/* WhatsApp Toggle */}
-                    <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-950/20 border border-slate-200 dark:border-slate-800 rounded-2xl">
-                      <div>
-                        <span className="text-xs font-bold text-foreground">WhatsApp Instant Alerts</span>
-                        <p className="text-[10px] text-slate-450 mt-0.5">Receive specialist assignments, tracking details, and bills directly.</p>
-                      </div>
-                      <button
-                        onClick={() => setWhatsappUpdates(!whatsappUpdates)}
-                        className={`w-10 h-6 rounded-full p-1 transition-colors cursor-pointer ${whatsappUpdates ? "bg-success-lux" : "bg-slate-300 dark:bg-slate-800"}`}
-                      >
-                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${whatsappUpdates ? "translate-x-4" : "translate-x-0"}`} />
-                      </button>
-                    </div>
-
-                    {/* SMS Toggle */}
-                    <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-950/20 border border-slate-200 dark:border-slate-800 rounded-2xl">
-                      <div>
-                        <span className="text-xs font-bold text-foreground">SMS Booking Verification</span>
-                        <p className="text-[10px] text-slate-455 mt-0.5">Standard check-in credentials and status updates via texting.</p>
-                      </div>
-                      <button
-                        onClick={() => setSmsUpdates(!smsUpdates)}
-                        className={`w-10 h-6 rounded-full p-1 transition-colors cursor-pointer ${smsUpdates ? "bg-success-lux" : "bg-slate-300 dark:bg-slate-800"}`}
-                      >
-                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${smsUpdates ? "translate-x-4" : "translate-x-0"}`} />
-                      </button>
-                    </div>
-
-                    {/* Email Toggle */}
-                    <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-950/20 border border-slate-200 dark:border-slate-800 rounded-2xl">
-                      <div>
-                        <span className="text-xs font-bold text-foreground">Email Newsletter &amp; Offers</span>
-                        <p className="text-[10px] text-slate-455 mt-0.5">Receive monthly promotions, invoice PDFs, and loyalty milestones updates.</p>
-                      </div>
-                      <button
-                        onClick={() => setEmailUpdates(!emailUpdates)}
-                        className={`w-10 h-6 rounded-full p-1 transition-colors cursor-pointer ${emailUpdates ? "bg-success-lux" : "bg-slate-300 dark:bg-slate-800"}`}
-                      >
-                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${emailUpdates ? "translate-x-4" : "translate-x-0"}`} />
-                      </button>
-                    </div>
                   </div>
                 </div>
 

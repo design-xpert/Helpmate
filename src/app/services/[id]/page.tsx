@@ -117,7 +117,7 @@ function ServiceDetailsHeroImage({
   }, [src, pkgId]);
 
   const initials = getNameInitials(name, "S");
-  const formattedUrl = currentSrc ? (currentSrc.startsWith("/") ? currentSrc : formatImageUrl(currentSrc)) : "";
+  const formattedUrl = formatImageUrl(currentSrc, pkgId);
 
   if (formattedUrl && !imgError) {
     return (

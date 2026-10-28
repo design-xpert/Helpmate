@@ -61,6 +61,7 @@ export interface CartItem {
   price: number;
   quantity: number;
   category: string;
+  categoryName?: string;
   duration: number; // in mins
   image?: string;
   imageUrl?: string;
@@ -241,6 +242,9 @@ export interface Booking {
   timeline: { status: string; time: string; done: boolean }[];
   invoiceId: string;
   dateCreated: string;
+  categoryName?: string;
+  rawBookingDate?: string;
+  rawCreatedAt?: string;
   review?: {
     reviewId?: string;
     rating: number;
@@ -270,6 +274,9 @@ interface AppState {
   setGuestMode: (val: boolean) => void;
   userPhone: string;
   userName: string;
+  userAvatar?: string;
+  userAlternatePhone?: string;
+  userEmail?: string;
   walletBalance: number;
   loyaltyPoints: number;
   addresses: Address[];
@@ -374,7 +381,7 @@ interface AppState {
   setChatOpen: (open: boolean) => void;
   chatMessages: ChatMessage[];
   sendChatMessage: (text: string, sender?: "user" | "bot" | "partner") => void;
-  updateProfile: (name: string, phone: string) => void;
+  updateProfile: (name: string, phone: string, alternatePhone?: string, avatar?: string, email?: string) => void;
   addWalletFunds: (amount: number) => void;
   redeemLoyaltyPoints: (points: number) => void;
 }
@@ -395,6 +402,9 @@ export const useStore = create<AppState>()(
       setGuestMode: (val) => set({ guestMode: val }),
       userPhone: "+91 98765 01928",
       userName: "Rohan Verma",
+      userAvatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80",
+      userAlternatePhone: "",
+      userEmail: "mukund@kvtmedia.com",
       walletBalance: 1250,
       loyaltyPoints: 340,
       addresses: [],
@@ -768,8 +778,15 @@ export const useStore = create<AppState>()(
           }
         }
       },
-      logout: () => set({ isLoggedIn: false, guestMode: true, token: null, customerId: null, customerCode: null, userPhone: "", userName: "", bookings: [], cart: [], cartId: null, cartPricing: null, bookmarkedPackageIds: [], bookmarkedPackages: [] }),
-      updateProfile: (name, phone) => set({ userName: name, userPhone: phone }),
+      logout: () => set({ isLoggedIn: false, guestMode: true, token: null, customerId: null, customerCode: null, userPhone: "", userName: "", userAvatar: "", userAlternatePhone: "", userEmail: "", bookings: [], cart: [], cartId: null, cartPricing: null, bookmarkedPackageIds: [], bookmarkedPackages: [] }),
+      updateProfile: (name, phone, alternatePhone, avatar, email) =>
+        set((state) => ({
+          userName: name,
+          userPhone: phone,
+          ...(alternatePhone !== undefined ? { userAlternatePhone: alternatePhone } : {}),
+          ...(avatar !== undefined ? { userAvatar: avatar } : {}),
+          ...(email !== undefined ? { userEmail: email } : {}),
+        })),
       addWalletFunds: (amount) => set((state) => ({ walletBalance: state.walletBalance + amount })),
       redeemLoyaltyPoints: (points) => set((state) => ({ loyaltyPoints: Math.max(0, state.loyaltyPoints - points) })),
 
@@ -1431,7 +1448,7 @@ export const useStore = create<AppState>()(
         try {
           const res = await fetchCustomerBookingsApi(state.token);
           if (res.success && res.data) {
-            let mappedBookings: Booking[] = res.data.map((item) => {
+            const mappedBookings: Booking[] = res.data.map((item) => {
               const defaultAddress: Address = state.addresses[0] || {
                 id: "1",
                 tag: "Home",
@@ -1468,13 +1485,19 @@ export const useStore = create<AppState>()(
                     };
                   }
 
+                  const srvCatName = (srv.category as any)?.name || (firstService?.category as any)?.name || "";
+                  const srvCatSlug = srvCatName
+                    ? srvCatName.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+                    : catSlug;
+
                   return {
                     id: pkgId,
                     packageId: pkgId,
                     name: pkgObj.name || pkgObj.packageName || pkgName,
                     price: pkgObj.price || srv.totalPrice || item.amount,
                     quantity: srv.quantity || 1,
-                    category: catSlug,
+                    category: srvCatSlug,
+                    categoryName: srvCatName || undefined,
                     duration: pkgObj.duration || 60,
                     review: mappedPkgRev
                   };
@@ -1487,6 +1510,7 @@ export const useStore = create<AppState>()(
                     price: item.amount,
                     quantity: 1,
                     category: catSlug,
+                    categoryName: (firstService?.category as any)?.name || undefined,
                     duration: 60,
                     review: undefined
                   }
@@ -1550,6 +1574,9 @@ export const useStore = create<AppState>()(
                 finalAmount: item.amount,
                 status: mappedStatus,
                 review: mappedReview,
+                categoryName: (firstService?.category as any)?.name || undefined,
+                rawBookingDate: item.bookingDate || undefined,
+                rawCreatedAt: item.createdAt || undefined,
                 professional: {
                   name: "Vetted Helpmate Pro",
                   rating: 4.9,
@@ -1865,6 +1892,9 @@ export const useStore = create<AppState>()(
         guestMode: state.guestMode,
         userPhone: state.userPhone,
         userName: state.userName,
+        userAvatar: state.userAvatar,
+        userAlternatePhone: state.userAlternatePhone,
+        userEmail: state.userEmail,
         walletBalance: state.walletBalance,
         loyaltyPoints: state.loyaltyPoints,
         selectedLocation: state.selectedLocation,

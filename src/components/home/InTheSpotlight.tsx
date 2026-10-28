@@ -38,7 +38,7 @@ function BannerImage({
     setImgError(false);
   }, [src]);
 
-  const resolvedSrc = src ? (src.startsWith("/") ? src : formatImageUrl(src)) : "";
+  const resolvedSrc = formatImageUrl(src);
 
   if (!imgError && resolvedSrc) {
     return (

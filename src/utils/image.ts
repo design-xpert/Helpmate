@@ -1,13 +1,63 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
-export function formatImageUrl(imgUrl?: string): string {
-  if (!imgUrl || typeof imgUrl !== "string") return "";
-  let trimmed = imgUrl.trim();
+export function formatImageUrl(
+  imgUrl?: any,
+  packageId?: string,
+  version?: string | number
+): string {
+  if (!imgUrl && !packageId) return "";
+
+  let rawStr = "";
+  let itemUpdatedAt: any = null;
+
+  if (typeof imgUrl === "string") {
+    rawStr = imgUrl;
+  } else if (typeof imgUrl === "object" && imgUrl !== null) {
+    itemUpdatedAt = imgUrl.updatedAt || imgUrl.updated_at || imgUrl.modifiedAt;
+    rawStr =
+      imgUrl.imageUrl ||
+      imgUrl.thumbnailUrl ||
+      imgUrl.image ||
+      imgUrl.url ||
+      imgUrl.iconUrl ||
+      "";
+    if (!packageId) {
+      packageId = imgUrl.id || imgUrl._id || imgUrl.packageId;
+    }
+  }
+
+  if (!rawStr && packageId && /^[0-9a-fA-F]{24}$/.test(packageId)) {
+    rawStr = `/api/media/package/${packageId}/image`;
+  }
+
+  if (!rawStr || typeof rawStr !== "string") return "";
+  let trimmed = rawStr.trim();
   if (!trimmed) return "";
 
   // Data URLs (base64) and blob URLs don't need transformation
   if (trimmed.startsWith("data:") || trimmed.startsWith("blob:")) {
     return trimmed;
+  }
+
+  // Extract query string (e.g. ?v=... or ?t=...)
+  let queryString = "";
+  const qIdx = trimmed.indexOf("?");
+  if (qIdx !== -1) {
+    queryString = trimmed.substring(qIdx);
+    trimmed = trimmed.substring(0, qIdx);
+  }
+
+  // If no query string, check if we have a version or updatedAt
+  let versionQuery = queryString;
+  if (!versionQuery) {
+    if (version) {
+      versionQuery = `?v=${version}`;
+    } else if (itemUpdatedAt) {
+      const t = new Date(itemUpdatedAt).getTime();
+      if (!isNaN(t) && t > 0) {
+        versionQuery = `?v=${t}`;
+      }
+    }
   }
 
   // 1. Google Drive file view links to direct image source
@@ -26,6 +76,7 @@ export function formatImageUrl(imgUrl?: string): string {
     } else if (!trimmed.includes("raw=1")) {
       trimmed += (trimmed.includes("?") ? "&" : "?") + "raw=1";
     }
+    return trimmed;
   }
 
   // 3. Convert backslashes to forward slashes
@@ -34,16 +85,20 @@ export function formatImageUrl(imgUrl?: string): string {
   // 4. Proxy /api/media/ URLs via same-origin Next.js rewrite to bypass CORS
   if (trimmed.includes("/api/media/")) {
     const mediaIdx = trimmed.indexOf("/api/media/");
-    return trimmed.substring(mediaIdx);
+    return `${trimmed.substring(mediaIdx)}${versionQuery}`;
   }
   if (trimmed.includes("media/package/")) {
     const mediaIdx = trimmed.indexOf("media/package/");
-    return `/api/${trimmed.substring(mediaIdx)}`;
+    return `/api/${trimmed.substring(mediaIdx)}${versionQuery}`;
+  }
+  if (packageId && (trimmed.startsWith("helpMate/packages") || trimmed.includes("packages/"))) {
+    return `/api/media/package/${packageId}/image${versionQuery}`;
   }
   if (trimmed.includes("package/") && (trimmed.includes("/image") || trimmed.length > 20)) {
     const pkgIdx = trimmed.indexOf("package/");
     const pkgPath = trimmed.substring(pkgIdx);
-    return pkgPath.endsWith("/image") ? `/api/media/${pkgPath}` : `/api/media/${pkgPath}/image`;
+    const cleanPath = pkgPath.endsWith("/image") ? pkgPath : `${pkgPath}/image`;
+    return `/api/media/${cleanPath}${versionQuery}`;
   }
 
   // 5. Handle relative URLs by prepending API_BASE_URL
@@ -55,9 +110,10 @@ export function formatImageUrl(imgUrl?: string): string {
   }
 
   try {
-    return encodeURI(decodeURI(trimmed));
+    const encoded = encodeURI(decodeURI(trimmed));
+    return `${encoded}${versionQuery}`;
   } catch {
-    return trimmed;
+    return `${trimmed}${versionQuery}`;
   }
 }
 

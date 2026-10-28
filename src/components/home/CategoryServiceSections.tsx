@@ -35,7 +35,7 @@ function ServiceImageCard({ image, title }: { image: string; title: string }) {
   }, [image]);
 
   const initials = getNameInitials(title, "S");
-  const resolvedUrl = image ? (image.startsWith("/") ? image : formatImageUrl(image)) : "";
+  const resolvedUrl = formatImageUrl(image);
 
   if (!imgError && resolvedUrl) {
     return (
