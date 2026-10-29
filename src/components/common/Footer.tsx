@@ -175,7 +175,7 @@ export default function Footer() {
             rel="noopener noreferrer"
             className="font-bold text-white hover:underline transition-colors"
           >
-            kvtmedia
+            KV TechMedia Pvt. Ltd.
           </a>
         </div>
       </div>

@@ -100,9 +100,9 @@ export function isAuthError(status?: number, message?: string): boolean {
 let isLoggingOut = false;
 
 /**
- * Central handler to immediately log the user out when their token expires
+ * Central handler to immediately log the user out when their token expires or verification fails
  */
-export function handleTokenExpiration(customReason?: string) {
+export function handleTokenExpiration(customReason?: string, customTitle?: string) {
   if (isLoggingOut) return;
   isLoggingOut = true;
 
@@ -111,8 +111,9 @@ export function handleTokenExpiration(customReason?: string) {
     useStore.getState().logout();
 
     // 2. Show alert toast notification
+    const title = customTitle || "Session Expired";
     const reason = customReason || "Your login session has expired. Please sign in again.";
-    toast.error("Session Expired", reason);
+    toast.error(title, reason);
 
     // 3. If currently on a protected route or checkout page, redirect to login
     if (typeof window !== "undefined") {

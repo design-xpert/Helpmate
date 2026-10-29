@@ -19,6 +19,7 @@ type ToastListener = (toasts: ToastItem[]) => void;
 
 let toastItems: ToastItem[] = [];
 let listeners: ToastListener[] = [];
+const recentToastTimestamps = new Map<string, number>();
 
 function notifyListeners() {
   const current = [...toastItems];
@@ -27,6 +28,19 @@ function notifyListeners() {
 
 export const toast = {
   show: (type: ToastType, title: string, message?: string, duration = 4500): string => {
+    // Deduplication check: prevent identical or rapid duplicate toasts within 1200ms
+    const normalizedKey = `${type}:${(title || "").trim().toLowerCase()}`;
+    const now = Date.now();
+    const lastSeen = recentToastTimestamps.get(normalizedKey) || 0;
+    if (now - lastSeen < 1200) {
+      return "";
+    }
+    // Also avoid adding if currently visible active toasts already contain this exact title & type
+    if (toastItems.some((t) => t.type === type && t.title.trim().toLowerCase() === (title || "").trim().toLowerCase())) {
+      return "";
+    }
+    recentToastTimestamps.set(normalizedKey, now);
+
     const id = Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
     const newToast: ToastItem = { id, type, title, message, duration };
     toastItems = [...toastItems, newToast];

@@ -5,7 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useStore } from "@/store/useStore";
-import { loginCustomerApi, sendCustomerLoginOtpApi } from "@/services/authApi";
+import {
+  loginCustomerApi,
+  sendCustomerLoginOtpApi,
+  updateCustomerProfileApi,
+  UpdateCustomerProfilePayload,
+} from "@/services/authApi";
 import { toast } from "@/components/common/Toast";
 import {
   Loader2,
@@ -21,6 +26,9 @@ import {
   RotateCcw,
   Edit2,
   ShieldCheck,
+  User,
+  Mail,
+  Sparkles,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -64,6 +72,15 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isNotRegistered, setIsNotRegistered] = useState(false);
+
+  // Profile completion state for unregistered / new customers
+  const [isProfileIncomplete, setIsProfileIncomplete] = useState(false);
+  const [pendingAuthData, setPendingAuthData] = useState<{ token: string; customer: any } | null>(null);
+  const [profileName, setProfileName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [profileAltPhone, setProfileAltPhone] = useState("");
+  const [profileError, setProfileError] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   useEffect(() => {
     if (queryMobile) {
@@ -310,17 +327,45 @@ function LoginContent() {
     try {
       const res = await loginCustomerApi({
         mobile: targetMobile,
+        loginType: "otp",
         otp: otpCode,
       });
 
       if (res.success && res.data) {
+        const receivedToken = res.data.token || (res.data as any).accessToken;
+        const customer = res.data.customer || (res.data as any).user || res.data;
+        const rawName = (customer?.fullName || customer?.name || "").trim();
+        const hasValidName = Boolean(
+          rawName &&
+          rawName.toLowerCase() !== "customer" &&
+          rawName.toLowerCase() !== "user" &&
+          rawName.length >= 2
+        );
+
+        if (!hasValidName) {
+          // Customer is not pre-registered or name is not filled!
+          // Make sure when name is not filled, don't go to landing page:
+          setPendingAuthData({
+            token: receivedToken,
+            customer: customer,
+          });
+          setIsProfileIncomplete(true);
+          setProfileName("");
+          setProfileEmail(customer?.email || "");
+          setProfileAltPhone(customer?.alternatePhone || "");
+          setLoginError("");
+          setSuccessMsg("");
+          toast.info("Name Required", "Please enter your full name to complete your account setup.");
+          return;
+        }
+
         triggerConfetti();
-        setSuccessMsg("Signed in successfully! Welcome back.");
+        setSuccessMsg(`Signed in successfully! Welcome back, ${rawName}.`);
         toast.success("Welcome Back!", "Signed in with OTP successfully.");
 
         await setAuth({
-          token: res.data.token,
-          customer: res.data.customer,
+          token: receivedToken,
+          customer: customer,
         });
 
         try {
@@ -372,17 +417,43 @@ function LoginContent() {
     try {
       const res = await loginCustomerApi({
         mobile: cleanedPhone,
+        loginType: "password",
         password: password,
       });
 
       if (res.success && res.data) {
+        const receivedToken = res.data.token || (res.data as any).accessToken;
+        const customer = res.data.customer || (res.data as any).user || res.data;
+        const rawName = (customer?.fullName || customer?.name || "").trim();
+        const hasValidName = Boolean(
+          rawName &&
+          rawName.toLowerCase() !== "customer" &&
+          rawName.toLowerCase() !== "user" &&
+          rawName.length >= 2
+        );
+
+        if (!hasValidName) {
+          setPendingAuthData({
+            token: receivedToken,
+            customer: customer,
+          });
+          setIsProfileIncomplete(true);
+          setProfileName("");
+          setProfileEmail(customer?.email || "");
+          setProfileAltPhone(customer?.alternatePhone || "");
+          setLoginError("");
+          setSuccessMsg("");
+          toast.info("Name Required", "Please enter your full name to complete your account setup.");
+          return;
+        }
+
         triggerConfetti();
         setSuccessMsg("Login successful! Welcome back.");
         toast.success("Welcome Back!", "Signed in successfully.");
 
         await setAuth({
-          token: res.data.token,
-          customer: res.data.customer,
+          token: receivedToken,
+          customer: customer,
         });
 
         try {
@@ -413,6 +484,91 @@ function LoginContent() {
     }
   };
 
+  // ===================== SAVE PROFILE HANDLER (PATCH /api/customer/auth/profile) =====================
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileError("");
+
+    const trimmedName = profileName.trim();
+    if (!trimmedName || trimmedName.length < 2) {
+      const err = "Please enter your full name (minimum 2 characters)";
+      setProfileError(err);
+      toast.error("Name Required", err);
+      return;
+    }
+
+    if (profileEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileEmail.trim())) {
+      const err = "Please enter a valid email address";
+      setProfileError(err);
+      toast.error("Invalid Email", err);
+      return;
+    }
+
+    const cleanAlt = profileAltPhone.replace(/\D/g, "");
+    if (cleanAlt && cleanAlt.length !== 10) {
+      const err = "Alternate mobile number must be exactly 10 digits";
+      setProfileError(err);
+      toast.error("Invalid Alternate Phone", err);
+      return;
+    }
+
+    const currentToken = pendingAuthData?.token;
+    if (!currentToken) {
+      setProfileError("Session expired. Please request a new OTP.");
+      setIsProfileIncomplete(false);
+      return;
+    }
+
+    setIsSavingProfile(true);
+
+    try {
+      const payload: UpdateCustomerProfilePayload = {
+        fullName: trimmedName,
+        ...(profileEmail.trim() ? { email: profileEmail.trim() } : {}),
+        ...(cleanAlt ? { alternatePhone: cleanAlt } : {}),
+      };
+
+      const res = await updateCustomerProfileApi(currentToken, payload);
+
+      if (res.success) {
+        triggerConfetti();
+        toast.success("Profile Setup Complete!", `Welcome to HelpMate, ${trimmedName}!`);
+
+        const updatedCustomer = {
+          ...pendingAuthData.customer,
+          fullName: trimmedName,
+          mobile: pendingAuthData.customer?.mobile || otpTargetMobile || phone,
+          email: profileEmail.trim() || pendingAuthData.customer?.email || "",
+          alternatePhone: cleanAlt || pendingAuthData.customer?.alternatePhone || "",
+        };
+
+        await setAuth({
+          token: currentToken,
+          customer: updatedCustomer,
+        });
+
+        try {
+          sessionStorage.removeItem("helpmate_redirect");
+        } catch {}
+
+        setTimeout(() => {
+          router.push(redirectPath || "/");
+        }, 500);
+      } else {
+        const err = res.message || "Failed to update profile. Please try again.";
+        setProfileError(err);
+        toast.error("Update Failed", err);
+      }
+    } catch (err: any) {
+      const msg = err?.message || "Network error. Please try again.";
+      setProfileError(msg);
+      toast.error("Connection Error", msg);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   const registerLink =
     redirectPath && redirectPath !== "/"
       ? `/register?redirect=${encodeURIComponent(redirectPath)}${phone ? `&mobile=${encodeURIComponent(phone)}` : ""}`
@@ -440,59 +596,63 @@ function LoginContent() {
             />
           </Link>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-            Sign In to HelpMate
+            {isProfileIncomplete ? "Complete Your Profile" : "Sign In to HelpMate"}
           </h1>
           <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-            Welcome back! Choose your preferred method to sign in.
+            {isProfileIncomplete
+              ? "Welcome! Please enter your name to complete your registration."
+              : "Welcome back! Choose your preferred method to sign in."}
           </p>
         </div>
 
-        {/* Dual Mode Switcher Tabs */}
-        <div className="p-1 rounded-2xl bg-slate-100 border border-slate-200/70 grid grid-cols-2 gap-1 relative select-none">
-          <button
-            type="button"
-            onClick={() => handleModeSwitch("otp")}
-            className={`relative py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer z-10 ${
-              loginMode === "otp"
-                ? "text-slate-900"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {loginMode === "otp" && (
-              <motion.div
-                layoutId="activeLoginTab"
-                transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                className="absolute inset-0 bg-white rounded-xl shadow-sm border border-slate-200/60"
-              />
-            )}
-            <span className="relative z-10 flex items-center gap-1.5">
-              <KeyRound className="w-3.5 h-3.5 text-accent-lux" />
-              <span>OTP Login</span>
-            </span>
-          </button>
+        {/* Dual Mode Switcher Tabs (Only when not in profile completion) */}
+        {!isProfileIncomplete && (
+          <div className="p-1 rounded-2xl bg-slate-100 border border-slate-200/70 grid grid-cols-2 gap-1 relative select-none">
+            <button
+              type="button"
+              onClick={() => handleModeSwitch("otp")}
+              className={`relative py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer z-10 ${
+                loginMode === "otp"
+                  ? "text-slate-900"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {loginMode === "otp" && (
+                <motion.div
+                  layoutId="activeLoginTab"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  className="absolute inset-0 bg-white rounded-xl shadow-sm border border-slate-200/60"
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-1.5">
+                <KeyRound className="w-3.5 h-3.5 text-accent-lux" />
+                <span>OTP Login</span>
+              </span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => handleModeSwitch("password")}
-            className={`relative py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer z-10 ${
-              loginMode === "password"
-                ? "text-slate-900"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {loginMode === "password" && (
-              <motion.div
-                layoutId="activeLoginTab"
-                transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                className="absolute inset-0 bg-white rounded-xl shadow-sm border border-slate-200/60"
-              />
-            )}
-            <span className="relative z-10 flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-accent-lux" />
-              <span>Password</span>
-            </span>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => handleModeSwitch("password")}
+              className={`relative py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer z-10 ${
+                loginMode === "password"
+                  ? "text-slate-900"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {loginMode === "password" && (
+                <motion.div
+                  layoutId="activeLoginTab"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  className="absolute inset-0 bg-white rounded-xl shadow-sm border border-slate-200/60"
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-accent-lux" />
+                <span>Password</span>
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* Error Alert */}
         {loginError && (
@@ -531,18 +691,338 @@ function LoginContent() {
           </motion.div>
         )}
 
-        {/* ======================= TAB 1: LOGIN WITH OTP ======================= */}
-        {loginMode === "otp" && (
-          <div className="space-y-4">
-            {!otpSent ? (
-              // Step 1: Mobile Input -> Request OTP
-              <form onSubmit={handleSendOtp} className="space-y-4">
+        {/* ======================= COMPLETE PROFILE FORM (FOR UNREGISTERED / NO-NAME CUSTOMERS) ======================= */}
+        {isProfileIncomplete ? (
+          <form onSubmit={handleSaveProfile} className="space-y-4">
+            {/* Verified Phone Banner */}
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
-                      Mobile Number
-                    </label>
-                  </div>
+                  <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider block leading-none">
+                    Verified Number
+                  </span>
+                  <span className="text-xs font-black text-slate-900 tracking-wider mt-0.5 block">
+                    +91 {otpTargetMobile || phone}
+                  </span>
+                </div>
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-200/60 px-2.5 py-1 rounded-full">
+                OTP Verified
+              </span>
+            </div>
+
+            {profileError && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-600 text-xs font-semibold flex items-start gap-2"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{profileError}</span>
+              </motion.div>
+            )}
+
+            {/* Full Name Input (Required) */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[10px] uppercase font-bold text-slate-600 tracking-wider flex items-center gap-1">
+                  Full Name <span className="text-rose-500">*</span>
+                </label>
+                <span className="text-[10px] text-slate-400 font-semibold">Required</span>
+              </div>
+              <div className="relative">
+                <span className="absolute left-4 top-3.5 text-slate-400 select-none">
+                  <User className="w-4 h-4" />
+                </span>
+                <input
+                  type="text"
+                  placeholder="e.g. Vivek Singh"
+                  value={profileName}
+                  onChange={(e) => {
+                    setProfileName(e.target.value);
+                    if (profileError) setProfileError("");
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-11 pr-4 text-xs font-bold focus:outline-none focus:border-accent-lux focus:bg-white text-slate-900 transition-all placeholder:text-slate-400 font-sans"
+                  required
+                  autoFocus
+                  disabled={isSavingProfile}
+                />
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Your legal name for home service appointments and official invoices.
+              </p>
+            </div>
+
+            {/* Email Address (Optional) */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[10px] uppercase font-bold text-slate-600 tracking-wider flex items-center gap-1">
+                  Email Address
+                </label>
+                <span className="text-[10px] text-slate-400">Optional</span>
+              </div>
+              <div className="relative">
+                <span className="absolute left-4 top-3.5 text-slate-400 select-none">
+                  <Mail className="w-4 h-4" />
+                </span>
+                <input
+                  type="email"
+                  placeholder="e.g. vivek@gmail.com"
+                  value={profileEmail}
+                  onChange={(e) => setProfileEmail(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-11 pr-4 text-xs font-bold focus:outline-none focus:border-accent-lux focus:bg-white text-slate-900 transition-all placeholder:text-slate-400 font-sans"
+                  disabled={isSavingProfile}
+                />
+              </div>
+            </div>
+
+            {/* Alternate Mobile Number (Optional) */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[10px] uppercase font-bold text-slate-600 tracking-wider flex items-center gap-1">
+                  Alternate Mobile Number
+                </label>
+                <span className="text-[10px] text-slate-400">Optional</span>
+              </div>
+              <div className="relative">
+                <span className="absolute left-4 top-3.5 text-xs font-bold text-slate-500 flex items-center gap-1 select-none">
+                  <Phone className="w-3.5 h-3.5 text-slate-400" /> +91
+                </span>
+                <input
+                  type="tel"
+                  placeholder="9876543210"
+                  maxLength={10}
+                  value={profileAltPhone}
+                  onChange={(e) => setProfileAltPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-16 pr-4 text-xs font-bold tracking-wider focus:outline-none focus:border-accent-lux focus:bg-white text-slate-900 transition-all placeholder:text-slate-400 font-sans"
+                  disabled={isSavingProfile}
+                />
+              </div>
+            </div>
+
+            {/* Save & Continue Submit Button */}
+            <button
+              type="submit"
+              disabled={isSavingProfile || !profileName.trim()}
+              className="w-full bg-accent-lux hover:bg-accent-lux/95 text-white font-extrabold text-xs py-3.5 rounded-2xl shadow-lg shadow-accent-lux/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mt-2 active:scale-95"
+            >
+              {isSavingProfile ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Saving Profile...</span>
+                </>
+              ) : (
+                <>
+                  <span>Save &amp; Continue</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+
+            {/* Back action */}
+            <div className="text-center pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsProfileIncomplete(false);
+                  setPendingAuthData(null);
+                  setOtpSent(false);
+                  setOtpValues(["", "", "", "", "", ""]);
+                  setProfileError("");
+                }}
+                className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+              >
+                Use a different mobile number
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            {/* ======================= TAB 1: LOGIN WITH OTP ======================= */}
+            {loginMode === "otp" && (
+              <div className="space-y-4">
+                {!otpSent ? (
+                  // Step 1: Mobile Input -> Request OTP
+                  <form onSubmit={handleSendOtp} className="space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
+                          Mobile Number
+                        </label>
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-4 top-3.5 text-xs font-bold text-slate-500 flex items-center gap-1 select-none">
+                          <Phone className="w-3.5 h-3.5 text-slate-400" /> +91
+                        </span>
+                        <input
+                          type="tel"
+                          placeholder="9876543210"
+                          value={phone}
+                          onChange={(e) => {
+                            setPhone(e.target.value.replace(/\D/g, "").slice(0, 10));
+                            setLoginError("");
+                            setIsNotRegistered(false);
+                          }}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-16 pr-4 text-xs font-bold tracking-wider focus:outline-none focus:border-accent-lux focus:bg-white text-slate-900 transition-all placeholder:text-slate-400 font-sans"
+                          required
+                          disabled={isSendingOtp}
+                          autoFocus
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                        We will send a 6-digit verification code to this mobile number via SMS.
+                      </p>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isSendingOtp || phone.replace(/\D/g, "").length !== 10}
+                      className="w-full bg-accent-lux hover:bg-accent-lux/95 text-white font-extrabold text-xs py-3.5 rounded-2xl shadow-lg shadow-accent-lux/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSendingOtp ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Sending Login Code...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Get Login OTP</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  // Step 2: 6-Digit OTP Verification Screen
+                  <form onSubmit={handleVerifyOtpLogin} className="space-y-4">
+                    {/* Active Phone Confirmation Pill */}
+                    <div className="p-3 rounded-2xl bg-slate-100/80 border border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-xl bg-accent-lux/10 text-accent-lux flex items-center justify-center">
+                          <Phone className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <span className="text-[9px] uppercase font-bold text-slate-400 block leading-none">
+                            Sending Code To
+                          </span>
+                          <span className="text-xs font-black text-slate-900 tracking-wider">
+                            +91 {otpTargetMobile || phone}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOtpSent(false);
+                          setOtpValues(["", "", "", "", "", ""]);
+                          setLoginError("");
+                          setSuccessMsg("");
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-accent-lux hover:underline px-2 py-1 rounded-lg hover:bg-white transition-colors cursor-pointer"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                        <span>Change</span>
+                      </button>
+                    </div>
+
+                    {/* 6 Digit Inputs */}
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-2">
+                        Enter 6-Digit Verification Code
+                      </label>
+                      <div className="flex items-center justify-between gap-1 xs:gap-1.5 sm:gap-2">
+                        {otpValues.map((val, idx) => (
+                          <input
+                            key={idx}
+                            ref={(el) => {
+                              otpInputRefs.current[idx] = el;
+                            }}
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={1}
+                            value={val}
+                            onChange={(e) => handleOtpChange(idx, e.target.value)}
+                            onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                            disabled={isLoading}
+                            className={`w-9.5 xs:w-11 sm:w-12 h-11 xs:h-12 sm:h-13 text-center text-sm xs:text-base sm:text-lg font-black rounded-xl sm:rounded-2xl border transition-all focus:outline-none ${
+                              val
+                                ? "bg-white border-accent-lux text-slate-900 shadow-sm ring-2 ring-accent-lux/20"
+                                : "bg-slate-50 border-slate-200 text-slate-900 focus:border-accent-lux focus:bg-white"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Resend Timer & Action */}
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <span className="text-slate-400 text-[11px]">
+                        Didn&apos;t receive code?
+                      </span>
+                      {canResend || resendTimer <= 0 ? (
+                        <button
+                          type="button"
+                          onClick={handleResendOtp}
+                          disabled={isSendingOtp}
+                          className="font-bold text-accent-lux hover:underline inline-flex items-center gap-1 cursor-pointer text-[11px]"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Resend OTP</span>
+                        </button>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
+                          Resend in <strong className="text-slate-600 font-bold">{resendTimer}s</strong>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Verify Submit Button */}
+                    <button
+                      type="submit"
+                      disabled={isLoading || otpValues.join("").length !== 6}
+                      className="w-full bg-accent-lux hover:bg-accent-lux/95 text-white font-extrabold text-xs py-3.5 rounded-2xl shadow-lg shadow-accent-lux/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Verifying & Signing In...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Verify &amp; Sign In</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                )}
+
+                {/* Switch Helper */}
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleModeSwitch("password")}
+                    className="text-xs text-slate-500 hover:text-accent-lux font-semibold transition-colors cursor-pointer"
+                  >
+                    Prefer password? <span className="font-bold text-accent-lux underline">Sign in with password</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ======================= TAB 2: LOGIN WITH PASSWORD ======================= */}
+            {loginMode === "password" && (
+              <form onSubmit={handlePasswordLoginSubmit} className="space-y-4">
+                {/* Mobile Field */}
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1.5">
+                    Mobile Number
+                  </label>
                   <div className="relative">
                     <span className="absolute left-4 top-3.5 text-xs font-bold text-slate-500 flex items-center gap-1 select-none">
                       <Phone className="w-3.5 h-3.5 text-slate-400" /> +91
@@ -558,271 +1038,103 @@ function LoginContent() {
                       }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-16 pr-4 text-xs font-bold tracking-wider focus:outline-none focus:border-accent-lux focus:bg-white text-slate-900 transition-all placeholder:text-slate-400 font-sans"
                       required
-                      disabled={isSendingOtp}
+                      disabled={isLoading}
                       autoFocus
                     />
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
-                    We will send a 6-digit verification code to this mobile number via SMS.
-                  </p>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isSendingOtp || phone.replace(/\D/g, "").length !== 10}
-                  className="w-full bg-accent-lux hover:bg-accent-lux/95 text-white font-extrabold text-xs py-3.5 rounded-2xl shadow-lg shadow-accent-lux/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSendingOtp ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Sending Login Code...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Get Login OTP</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </form>
-            ) : (
-              // Step 2: 6-Digit OTP Verification Screen
-              <form onSubmit={handleVerifyOtpLogin} className="space-y-4">
-                {/* Active Phone Confirmation Pill */}
-                <div className="p-3 rounded-2xl bg-slate-100/80 border border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-xl bg-accent-lux/10 text-accent-lux flex items-center justify-center">
-                      <Phone className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <span className="text-[9px] uppercase font-bold text-slate-400 block leading-none">
-                        Sending Code To
-                      </span>
-                      <span className="text-xs font-black text-slate-900 tracking-wider">
-                        +91 {otpTargetMobile || phone}
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOtpSent(false);
-                      setOtpValues(["", "", "", "", "", ""]);
-                      setLoginError("");
-                      setSuccessMsg("");
-                    }}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-accent-lux hover:underline px-2 py-1 rounded-lg hover:bg-white transition-colors cursor-pointer"
-                  >
-                    <Edit2 className="w-3 h-3" />
-                    <span>Change</span>
-                  </button>
-                </div>
-
-                {/* 6 Digit Inputs */}
+                {/* Password Field */}
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-2">
-                    Enter 6-Digit Verification Code
-                  </label>
-                  <div className="flex items-center justify-between gap-1 xs:gap-1.5 sm:gap-2">
-                    {otpValues.map((val, idx) => (
-                      <input
-                        key={idx}
-                        ref={(el) => {
-                          otpInputRefs.current[idx] = el;
-                        }}
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        maxLength={1}
-                        value={val}
-                        onChange={(e) => handleOtpChange(idx, e.target.value)}
-                        onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                        disabled={isLoading}
-                        className={`w-9.5 xs:w-11 sm:w-12 h-11 xs:h-12 sm:h-13 text-center text-sm xs:text-base sm:text-lg font-black rounded-xl sm:rounded-2xl border transition-all focus:outline-none ${
-                          val
-                            ? "bg-white border-accent-lux text-slate-900 shadow-sm ring-2 ring-accent-lux/20"
-                            : "bg-slate-50 border-slate-200 text-slate-900 focus:border-accent-lux focus:bg-white"
-                        }`}
-                      />
-                    ))}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
+                      Password
+                    </label>
+                    <Link
+                      href={
+                        redirectPath && redirectPath !== "/"
+                          ? `/forgot-password?redirect=${encodeURIComponent(redirectPath)}`
+                          : "/forgot-password"
+                      }
+                      className="text-[11px] font-bold text-accent-lux hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
                   </div>
-                </div>
-
-                {/* Resend Timer & Action */}
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <span className="text-slate-400 text-[11px]">
-                    Didn&apos;t receive code?
-                  </span>
-                  {canResend || resendTimer <= 0 ? (
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-4 top-3.5 pointer-events-none" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setLoginError("");
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-11 pr-11 text-xs font-medium focus:outline-none focus:border-accent-lux focus:bg-white text-slate-900 transition-all placeholder:text-slate-400"
+                      required
+                      disabled={isLoading}
+                    />
                     <button
                       type="button"
-                      onClick={handleResendOtp}
-                      disabled={isSendingOtp}
-                      className="font-bold text-accent-lux hover:underline inline-flex items-center gap-1 cursor-pointer text-[11px]"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                     >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Resend OTP</span>
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
-                  ) : (
-                    <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
-                      Resend in <strong className="text-slate-600 font-bold">{resendTimer}s</strong>
-                    </span>
-                  )}
+                  </div>
                 </div>
 
-                {/* Verify Submit Button */}
+                {/* Submit Button */}
                 <button
                   type="submit"
-                  disabled={isLoading || otpValues.join("").length !== 6}
-                  className="w-full bg-accent-lux hover:bg-accent-lux/95 text-white font-extrabold text-xs py-3.5 rounded-2xl shadow-lg shadow-accent-lux/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isLoading || phone.replace(/\D/g, "").length !== 10 || !password}
+                  className="w-full bg-accent-lux hover:bg-accent-lux/95 text-white font-extrabold text-xs py-3.5 rounded-2xl shadow-lg shadow-accent-lux/20 transition-all cursor-pointer mt-2 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Verifying & Signing In...</span>
+                      <span>Signing In...</span>
                     </>
                   ) : (
                     <>
-                      <span>Verify & Sign In</span>
+                      <span>Sign In with Password</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
+
+                {/* Switch Helper */}
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleModeSwitch("otp")}
+                    className="text-xs text-slate-500 hover:text-accent-lux font-semibold transition-colors cursor-pointer"
+                  >
+                    Forgot your password? <span className="font-bold text-accent-lux underline">Sign in with OTP</span>
+                  </button>
+                </div>
               </form>
             )}
 
-            {/* Switch Helper */}
-            <div className="text-center pt-2">
-              <button
-                type="button"
-                onClick={() => handleModeSwitch("password")}
-                className="text-xs text-slate-500 hover:text-accent-lux font-semibold transition-colors cursor-pointer"
+            {/* Register Button Link */}
+            <div className="pt-4 border-t border-slate-100 text-center space-y-3">
+              <Link
+                href={registerLink}
+                className="w-full py-3 px-4 rounded-2xl border border-slate-200 hover:border-accent-lux bg-slate-50 hover:bg-white text-slate-700 hover:text-accent-lux font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
               >
-                Prefer password? <span className="font-bold text-accent-lux underline">Sign in with password</span>
-              </button>
+                <UserPlus className="w-4 h-4 text-accent-lux" />
+                <span>New to HelpMate? Create an Account</span>
+              </Link>
+
+              <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-400">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                <span>256-bit Encrypted &amp; Verified Login</span>
+              </div>
             </div>
-          </div>
+          </>
         )}
-
-        {/* ======================= TAB 2: LOGIN WITH PASSWORD ======================= */}
-        {loginMode === "password" && (
-          <form onSubmit={handlePasswordLoginSubmit} className="space-y-4">
-            {/* Mobile Field */}
-            <div>
-              <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1.5">
-                Mobile Number
-              </label>
-              <div className="relative">
-                <span className="absolute left-4 top-3.5 text-xs font-bold text-slate-500 flex items-center gap-1 select-none">
-                  <Phone className="w-3.5 h-3.5 text-slate-400" /> +91
-                </span>
-                <input
-                  type="tel"
-                  placeholder="9876543210"
-                  value={phone}
-                  onChange={(e) => {
-                    setPhone(e.target.value.replace(/\D/g, "").slice(0, 10));
-                    setLoginError("");
-                    setIsNotRegistered(false);
-                  }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-16 pr-4 text-xs font-bold tracking-wider focus:outline-none focus:border-accent-lux focus:bg-white text-slate-900 transition-all placeholder:text-slate-400 font-sans"
-                  required
-                  disabled={isLoading}
-                  autoFocus
-                />
-              </div>
-            </div>
-
-            {/* Password Field */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
-                  Password
-                </label>
-                <Link
-                  href={
-                    redirectPath && redirectPath !== "/"
-                      ? `/forgot-password?redirect=${encodeURIComponent(redirectPath)}`
-                      : "/forgot-password"
-                  }
-                  className="text-[11px] font-bold text-accent-lux hover:underline"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-4 top-3.5 pointer-events-none" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setLoginError("");
-                  }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-11 pr-11 text-xs font-medium focus:outline-none focus:border-accent-lux focus:bg-white text-slate-900 transition-all placeholder:text-slate-400"
-                  required
-                  disabled={isLoading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading || phone.replace(/\D/g, "").length !== 10 || !password}
-              className="w-full bg-accent-lux hover:bg-accent-lux/95 text-white font-extrabold text-xs py-3.5 rounded-2xl shadow-lg shadow-accent-lux/20 transition-all cursor-pointer mt-2 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Signing In...</span>
-                </>
-              ) : (
-                <>
-                  <span>Sign In with Password</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-
-            {/* Switch Helper */}
-            <div className="text-center pt-2">
-              <button
-                type="button"
-                onClick={() => handleModeSwitch("otp")}
-                className="text-xs text-slate-500 hover:text-accent-lux font-semibold transition-colors cursor-pointer"
-              >
-                Forgot your password? <span className="font-bold text-accent-lux underline">Sign in with OTP</span>
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Register Button Link */}
-        <div className="pt-4 border-t border-slate-100 text-center space-y-3">
-          <Link
-            href={registerLink}
-            className="w-full py-3 px-4 rounded-2xl border border-slate-200 hover:border-accent-lux bg-slate-50 hover:bg-white text-slate-700 hover:text-accent-lux font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-          >
-            <UserPlus className="w-4 h-4 text-accent-lux" />
-            <span>New to HelpMate? Create an Account</span>
-          </Link>
-
-          <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-400">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            <span>256-bit Encrypted &amp; Verified Login</span>
-          </div>
-        </div>
       </motion.div>
     </div>
   );

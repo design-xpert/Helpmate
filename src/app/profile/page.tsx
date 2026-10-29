@@ -39,6 +39,7 @@ import {
   Edit3,
   Bookmark,
   ShoppingBag,
+  ShoppingCart,
   Video,
   Film,
   UploadCloud,
@@ -54,7 +55,8 @@ import {
   PhoneCall,
   Save,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "@/components/common/Header";
@@ -94,11 +96,14 @@ function ProfilePageContent() {
     fetchBookmarks,
     toggleBookmark,
     addToCart,
+    cart,
     cancelBooking,
     rescheduleBooking,
     updateBookingStatus,
     addNotification,
     updateProfile,
+    updateCustomerProfileAsync,
+    uploadCustomerProfileImageAsync,
     addWalletFunds,
     redeemLoyaltyPoints,
     fetchCustomerProfile,
@@ -552,9 +557,17 @@ function ProfilePageContent() {
   const [editName, setEditName] = useState(userName || "");
   const [editPhone, setEditPhone] = useState(extractPhoneDigits(userPhone) || "");
   const [editAlternatePhone, setEditAlternatePhone] = useState(extractPhoneDigits(userAlternatePhone) || "");
-  const [editEmail, setEditEmail] = useState(storeEmail || "mukund@kvtmedia.com");
-  const [editSecondaryEmail, setEditSecondaryEmail] = useState("recovery.mukund@kvtmedia.com");
-  const [avatarUrl, setAvatarUrl] = useState(userAvatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80");
+  const [editEmail, setEditEmail] = useState(storeEmail || "");
+  const [editSecondaryEmail, setEditSecondaryEmail] = useState("");
+  const sanitizeAvatar = (url?: string | null) => {
+    if (!url) return "";
+    if (url.includes("unsplash.com") && url.includes("photo-1472099645785")) return "";
+    return url;
+  };
+
+  const [avatarUrl, setAvatarUrl] = useState(sanitizeAvatar(userAvatar));
+  const [avatarLoaded, setAvatarLoaded] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<{ name?: string; phone?: string; alternatePhone?: string }>({});
@@ -569,7 +582,7 @@ function ProfilePageContent() {
     setEditName(userName || "");
     setEditPhone(extractPhoneDigits(userPhone) || "");
     setEditAlternatePhone(extractPhoneDigits(userAlternatePhone) || "");
-    if (userAvatar) setAvatarUrl(userAvatar);
+    setAvatarUrl(sanitizeAvatar(userAvatar));
     if (storeEmail) setEditEmail(storeEmail);
   }, [userName, userPhone, userAlternatePhone, userAvatar, storeEmail]);
 
@@ -585,45 +598,69 @@ function ProfilePageContent() {
     editName.trim() !== (userName || "").trim() ||
     editPhone.replace(/\D/g, "") !== extractPhoneDigits(userPhone) ||
     editAlternatePhone.replace(/\D/g, "") !== extractPhoneDigits(userAlternatePhone) ||
-    avatarUrl !== (userAvatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80") ||
-    editEmail.trim() !== (storeEmail || "mukund@kvtmedia.com");
+    avatarUrl !== sanitizeAvatar(userAvatar) ||
+    editEmail.trim() !== (storeEmail || "").trim();
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setAvatarError("Please select a valid image file (JPG, PNG, or WebP).");
+      const err = "Please select a valid image file (JPG, PNG, or WebP).";
+      setAvatarError(err);
+      toast.error("Invalid File", err);
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setAvatarError("Image file size must be less than 5 MB.");
+      const err = "Image file size must be less than 5 MB.";
+      setAvatarError(err);
+      toast.error("File Too Large", err);
       return;
     }
 
     setAvatarError(null);
     setAvatarFile(file);
 
+    // Show immediate local preview
     const reader = new FileReader();
     reader.onload = (event) => {
       if (typeof event.target?.result === "string") {
         setAvatarUrl(event.target.result);
+        setAvatarLoaded(true);
       }
     };
     reader.readAsDataURL(file);
+
+    // Upload directly via PUT /api/customer/auth/profile/image
+    if (token) {
+      setIsUploadingAvatar(true);
+      try {
+        const res = await uploadCustomerProfileImageAsync(file);
+        if (res.success) {
+          toast.success("Profile Photo Uploaded", res.message || "Your profile image was updated successfully.");
+        } else {
+          toast.error("Upload Failed", res.message || "Failed to upload profile image.");
+        }
+      } catch (err: any) {
+        toast.error("Upload Error", err?.message || "Failed to upload profile image.");
+      } finally {
+        setIsUploadingAvatar(false);
+      }
+    }
   };
 
   const handleRemoveAvatar = () => {
     setAvatarFile(null);
     setAvatarError(null);
-    setAvatarUrl("https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80");
+    setAvatarUrl("");
+    setAvatarLoaded(false);
     if (avatarFileInputRef.current) {
       avatarFileInputRef.current.value = "";
     }
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     const errors: { name?: string; phone?: string; alternatePhone?: string } = {};
 
     const trimmedName = editName.trim();
@@ -658,22 +695,32 @@ function ProfilePageContent() {
     setFormErrors({});
     setIsSavingProfile(true);
 
-    setTimeout(() => {
+    try {
+      if (token) {
+        await updateCustomerProfileAsync({
+          fullName: trimmedName,
+          email: editEmail.trim(),
+          alternatePhone: cleanAlt,
+        });
+      }
+
       const formattedPrimary = `+91 ${cleanPrimary.slice(0, 5)} ${cleanPrimary.slice(5)}`;
       const formattedAlt = cleanAlt ? `+91 ${cleanAlt.slice(0, 5)} ${cleanAlt.slice(5)}` : "";
 
       updateProfile(trimmedName, formattedPrimary, formattedAlt, avatarUrl, editEmail.trim());
-      setIsSavingProfile(false);
       addNotification("Profile Updated", "Your profile photo and contact details have been securely updated.", "success");
-      toast.success("Profile updated successfully!");
-    }, 600);
+    } catch (err: any) {
+      toast.error("Update Failed", err?.message || "Failed to update profile.");
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   const handleResetProfile = () => {
     setEditName(userName || "");
     setEditPhone(extractPhoneDigits(userPhone) || "");
     setEditAlternatePhone(extractPhoneDigits(userAlternatePhone) || "");
-    setAvatarUrl(userAvatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80");
+    setAvatarUrl(sanitizeAvatar(userAvatar));
     setAvatarFile(null);
     setAvatarError(null);
     setFormErrors({});
@@ -898,8 +945,24 @@ function ProfilePageContent() {
                     fill="transparent"
                   />
                 </svg>
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden p-0.5 bg-white dark:bg-slate-900 shadow-md relative">
-                  <img src={avatarUrl} alt={userName} className="w-full h-full object-cover rounded-full" />
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden p-0.5 bg-white dark:bg-slate-900 shadow-md relative flex items-center justify-center">
+                  {isUploadingAvatar ? (
+                    <div className="w-full h-full rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                      <Loader2 className="w-4 h-4 animate-spin text-accent-lux" />
+                    </div>
+                  ) : avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={userName || "Profile"}
+                      className="w-full h-full object-cover rounded-full"
+                      onError={() => setAvatarUrl("")}
+                    />
+                  ) : (
+                    <div className="w-full h-full rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse flex flex-col items-center justify-center pt-1.5 overflow-hidden">
+                      <div className="w-4 h-4 rounded-full bg-slate-300 dark:bg-slate-700 mb-0.5" />
+                      <div className="w-8 h-4 rounded-t-full bg-slate-300 dark:bg-slate-700" />
+                    </div>
+                  )}
                 </div>
                 <span className="absolute -bottom-1 -right-0.5 text-[8px] font-black bg-slate-900 text-white dark:bg-white dark:text-slate-950 px-1.5 py-0.5 rounded-full shadow border border-white dark:border-slate-900">
                   {profileScore}%
@@ -2339,6 +2402,9 @@ function ProfilePageContent() {
                       const displayImg = rawImg 
                         ? formatImageUrl(rawImg) 
                         : (packageId ? `/api/media/package/${packageId}/image` : "");
+                      const isCartAdded = cart?.some(
+                        (c) => String(c.id) === String(packageId) || String(c.itemId) === String(packageId) || String((c as any).packageId) === String(packageId)
+                      );
 
                       return (
                         <div
@@ -2378,30 +2444,75 @@ function ProfilePageContent() {
                           </div>
 
                           <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                            {/* Add to Cart Icon Button */}
                             <button
                               type="button"
                               onClick={() => {
+                                if (isCartAdded) {
+                                  toast.info("Package is already in your cart.");
+                                  return;
+                                }
                                 addToCart({
-                                  id: pkg._id,
+                                  id: packageId,
+                                  itemId: packageId,
+                                  packageId: packageId,
                                   name: pkg.packageName,
                                   price: pkg.price,
                                   category: pkg.serviceAction?.name || "Service",
                                   duration: pkg.duration || 30,
+                                  image: displayImg,
+                                  imageUrl: displayImg,
                                 });
+                                toast.success(`${pkg.packageName} added to cart!`);
                               }}
-                              className="flex-1 py-2 px-3 rounded-xl bg-accent-lux text-white text-xs font-bold hover:bg-accent-lux/90 transition-all text-center cursor-pointer"
+                              className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-center shrink-0 active:scale-95 ${
+                                isCartAdded
+                                  ? "bg-accent-lux/10 text-accent-lux border-accent-lux/40 shadow-xs"
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-accent-lux/10 hover:text-accent-lux hover:border-accent-lux/30"
+                              }`}
+                              title={isCartAdded ? "Already in Cart" : "Add to Cart"}
                             >
-                              Add to Cart
+                              {isCartAdded ? (
+                                <Check className="w-4 h-4 text-accent-lux" />
+                              ) : (
+                                <ShoppingCart className="w-4 h-4" />
+                              )}
                             </button>
 
+                            {/* Book Now Button */}
                             <button
                               type="button"
                               onClick={() => {
-                                toggleBookmark(pkg._id);
-                                addNotification("Bookmark Removed", `${pkg.packageName} removed from saved list.`, "info");
+                                if (!isCartAdded) {
+                                  addToCart({
+                                    id: packageId,
+                                    itemId: packageId,
+                                    packageId: packageId,
+                                    name: pkg.packageName,
+                                    price: pkg.price,
+                                    category: pkg.serviceAction?.name || "Service",
+                                    duration: pkg.duration || 30,
+                                    image: displayImg,
+                                    imageUrl: displayImg,
+                                  });
+                                }
+                                router.push("/booking");
                               }}
-                              className="p-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all cursor-pointer"
-                              title="Remove Bookmark"
+                              className="flex-1 py-2.5 px-3.5 rounded-xl bg-accent-lux hover:bg-accent-lux/95 active:scale-95 text-white text-xs font-black tracking-wide shadow-md shadow-accent-lux/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <span>Book Now</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Delete Icon Button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                toggleBookmark(packageId);
+                                toast.info("Removed from saved packages");
+                              }}
+                              className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 transition-all cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
+                              title="Remove from Saved Packages"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -2684,25 +2795,14 @@ function ProfilePageContent() {
                     </div>
                     <div>
                       <h3 className="font-extrabold text-base sm:text-lg text-foreground tracking-tight flex items-center gap-2">
-                        Profile &amp; Account Details
+                        Profile
                       </h3>
                       <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                        Manage your profile image, legal name, primary mobile, and backup emergency number.
+                        Manage your profile image, Name and primary mobile number.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 self-start sm:self-auto">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Active Customer
-                    </span>
-                    {hasUnsavedChanges && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                        Unsaved
-                      </span>
-                    )}
-                  </div>
                 </div>
 
                 {/* Profile Photo Upload Card with Integrated Circular Progress Meter */}
@@ -2764,19 +2864,47 @@ function ProfilePageContent() {
 
                       {/* Avatar Image Circle inside the Ring */}
                       <div
-                        onClick={() => avatarFileInputRef.current?.click()}
-                        className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden p-1 bg-white dark:bg-slate-950 shadow-md cursor-pointer relative group"
+                        onClick={() => !isUploadingAvatar && avatarFileInputRef.current?.click()}
+                        className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden p-1 bg-white dark:bg-slate-950 shadow-md cursor-pointer relative group flex items-center justify-center"
                         title="Click to change photo"
                       >
-                        <img
-                          src={avatarUrl}
-                          alt={editName || "User avatar"}
-                          className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-300"
-                        />
-                        <div className="absolute inset-1 rounded-full bg-black/45 backdrop-blur-[1px] flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-white">
-                          <Camera className="w-5 h-5 mb-0.5" />
-                          <span className="text-[9px] font-bold">Change</span>
-                        </div>
+                        {isUploadingAvatar && (
+                          <div className="absolute inset-1 rounded-full bg-slate-900/80 backdrop-blur-[2px] flex flex-col items-center justify-center text-white z-20">
+                            <Loader2 className="w-6 h-6 animate-spin text-accent-lux mb-1" />
+                            <span className="text-[9px] font-bold">Uploading...</span>
+                          </div>
+                        )}
+                        {avatarUrl ? (
+                          <>
+                            {!avatarLoaded && (
+                              <div className="absolute inset-1 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse flex flex-col items-center justify-center pt-3 overflow-hidden">
+                                <div className="w-9 h-9 rounded-full bg-slate-300 dark:bg-slate-700 mb-1.5" />
+                                <div className="w-16 h-8 rounded-t-full bg-slate-300 dark:bg-slate-700" />
+                              </div>
+                            )}
+                            <img
+                              src={avatarUrl}
+                              alt={editName || "User avatar"}
+                              onLoad={() => setAvatarLoaded(true)}
+                              onError={() => {
+                                setAvatarUrl("");
+                                setAvatarLoaded(false);
+                              }}
+                              className={`w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-300 ${!avatarLoaded ? "opacity-0" : "opacity-100"}`}
+                            />
+                          </>
+                        ) : (
+                          <div className="w-full h-full rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse flex flex-col items-center justify-center pt-3 overflow-hidden">
+                            <div className="w-9 h-9 rounded-full bg-slate-300 dark:bg-slate-700 mb-1.5" />
+                            <div className="w-16 h-8 rounded-t-full bg-slate-300 dark:bg-slate-700" />
+                          </div>
+                        )}
+                        {!isUploadingAvatar && (
+                          <div className="absolute inset-1 rounded-full bg-black/45 backdrop-blur-[1px] flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-white">
+                            <Camera className="w-5 h-5 mb-0.5" />
+                            <span className="text-[9px] font-bold">Change</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Camera Button at Top-Right of circle */}
@@ -2784,7 +2912,7 @@ function ProfilePageContent() {
                         type="button"
                         onClick={() => avatarFileInputRef.current?.click()}
                         className="absolute top-0 right-0 p-2 rounded-full bg-accent-lux text-white shadow-lg hover:scale-110 active:scale-95 transition-all cursor-pointer border-2 border-white dark:border-slate-900 z-10"
-                        title="Upload new photo"
+                        title="Upload Image"
                       >
                         <Camera className="w-3.5 h-3.5" />
                       </button>
@@ -2807,18 +2935,15 @@ function ProfilePageContent() {
                         <button
                           type="button"
                           onClick={() => avatarFileInputRef.current?.click()}
-                          className="px-4 py-2.5 rounded-xl bg-accent-lux hover:bg-accent-lux/90 text-white text-xs font-bold shadow-md shadow-accent-lux/10 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                          disabled={isUploadingAvatar}
+                          className="px-4 py-2.5 rounded-xl bg-accent-lux hover:bg-accent-lux/90 text-white text-xs font-bold shadow-md shadow-accent-lux/10 flex items-center gap-2 cursor-pointer transition-all active:scale-95 disabled:opacity-60"
                         >
-                          <UploadCloud className="w-4 h-4" />
-                          <span>Upload New Photo</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleRemoveAvatar}
-                          className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-900 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Remove</span>
+                          {isUploadingAvatar ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <UploadCloud className="w-4 h-4" />
+                          )}
+                          <span>{isUploadingAvatar ? "Uploading..." : "Upload Image"}</span>
                         </button>
                       </div>
 
@@ -2829,7 +2954,7 @@ function ProfilePageContent() {
                         </p>
                         <p className="flex items-center justify-center sm:justify-start gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-accent-lux shrink-0" />
-                          Supports JPG, PNG, or WebP. Maximum size 5 MB.
+                          Supports JPG, PNG, or WebP. Maximum size 1 MB.
                         </p>
                       </div>
 

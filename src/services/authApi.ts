@@ -52,6 +52,7 @@ export async function sendCustomerSignupOtpApi(
 
 export interface LoginPayload {
   mobile: string;
+  loginType?: "otp" | "password";
   password?: string;
   otp?: string;
 }
@@ -104,6 +105,11 @@ export interface CustomerData {
   customerCode: string;
   fullName: string;
   mobile: string;
+  email?: string;
+  alternatePhone?: string;
+  avatar?: string;
+  name?: string;
+  [key: string]: any;
 }
 
 export interface AuthResponse {
@@ -173,13 +179,24 @@ export interface CurrentCustomerResponse {
   success: boolean;
   message: string;
   data?: {
-    id: string;
-    customerCode: string;
-    fullName: string;
-    mobile: string;
+    id?: string;
+    _id?: string;
+    customerCode?: string;
+    fullName?: string;
+    name?: string;
+    mobile?: string;
+    phone?: string;
     email?: string;
+    alternatePhone?: string;
+    altPhone?: string;
+    profileImage?: string;
+    avatar?: string;
+    image?: string;
     customerCategory?: string;
     propertyHouseholdType?: string;
+    status?: boolean;
+    isPasswordSet?: boolean;
+    [key: string]: any;
   };
 }
 
@@ -189,13 +206,28 @@ export interface CurrentCustomerResponse {
  */
 export async function getCurrentCustomerApi(token: string): Promise<CurrentCustomerResponse> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/customer/auth/me`, {
+    let res = await fetch(`${API_BASE_URL}/api/customer/auth/me`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
     });
+
+    if (!res.ok && typeof window !== "undefined" && API_BASE_URL.startsWith("http")) {
+      try {
+        const fallbackRes = await fetch("/api/customer/auth/me", {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (fallbackRes.ok) {
+          res = fallbackRes;
+        }
+      } catch {}
+    }
 
     const data = await res.json();
     if (!res.ok) {
@@ -207,9 +239,163 @@ export async function getCurrentCustomerApi(token: string): Promise<CurrentCusto
 
     return data;
   } catch (error: any) {
+    if (typeof window !== "undefined") {
+      try {
+        const fbRes = await fetch("/api/customer/auth/me", {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const fbData = await fbRes.json();
+        if (fbRes.ok) return fbData;
+        return {
+          success: false,
+          message: fbData.message || "Failed to fetch customer profile.",
+        };
+      } catch {}
+    }
     return {
       success: false,
       message: error?.message || "Network error while fetching profile.",
+    };
+  }
+}
+
+export interface UploadProfileImageResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    profileImage?: string;
+    avatar?: string;
+    image?: string;
+    customer?: any;
+    [key: string]: any;
+  } | any;
+}
+
+/**
+ * Upload Customer Profile Image
+ * PUT /api/customer/auth/profile/image
+ * Body: FormData with 'profileImage'
+ */
+export async function uploadCustomerProfileImageApi(
+  token: string,
+  imageFile: File | Blob
+): Promise<UploadProfileImageResponse> {
+  try {
+    const formData = new FormData();
+    formData.append("profileImage", imageFile);
+
+    let res = await fetch(`${API_BASE_URL}/api/customer/auth/profile/image`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!res.ok && typeof window !== "undefined" && API_BASE_URL.startsWith("http")) {
+      try {
+        const fallbackRes = await fetch("/api/customer/auth/profile/image", {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        });
+        if (fallbackRes.ok) {
+          res = fallbackRes;
+        }
+      } catch {}
+    }
+
+    const data = await res.json();
+    if (!res.ok) {
+      return {
+        success: false,
+        message: data.message || "Failed to upload profile image.",
+      };
+    }
+
+    return data;
+  } catch (error: any) {
+    if (typeof window !== "undefined") {
+      try {
+        const formData = new FormData();
+        formData.append("profileImage", imageFile);
+        const fbRes = await fetch("/api/customer/auth/profile/image", {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        });
+        const fbData = await fbRes.json();
+        if (fbRes.ok) return fbData;
+        return {
+          success: false,
+          message: fbData.message || "Failed to upload profile image.",
+        };
+      } catch {}
+    }
+    return {
+      success: false,
+      message: error?.message || "Network error while uploading profile image.",
+    };
+  }
+}
+
+export interface UpdateCustomerProfilePayload {
+  fullName: string;
+  email?: string;
+  alternatePhone?: string;
+}
+
+export interface UpdateCustomerProfileResponse {
+  success: boolean;
+  message: string;
+  data?: any;
+}
+
+/**
+ * Update Customer Profile
+ * PATCH /api/customer/auth/profile
+ */
+export async function updateCustomerProfileApi(
+  token: string,
+  payload: UpdateCustomerProfilePayload
+): Promise<UpdateCustomerProfileResponse> {
+  try {
+    const cleanBody: { fullName: string; email?: string; alternatePhone?: string } = {
+      fullName: payload.fullName,
+    };
+    if (payload.email) cleanBody.email = payload.email;
+    if (payload.alternatePhone) cleanBody.alternatePhone = payload.alternatePhone;
+
+    const res = await fetch(`${API_BASE_URL}/api/customer/auth/profile`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(cleanBody),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return {
+        success: false,
+        message: data.message || "Failed to update profile details.",
+      };
+    }
+
+    return data;
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error?.message || "Network error. Unable to update profile.",
     };
   }
 }

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { toast } from "@/components/common/Toast";
-import { getCurrentCustomerApi } from "@/services/authApi";
+import { getCurrentCustomerApi, updateCustomerProfileApi, uploadCustomerProfileImageApi } from "@/services/authApi";
 import {
   addToCartApi,
   getCartApi,
@@ -298,6 +298,8 @@ interface AppState {
   setAuth: (data: { token: string; customer: { id: string; customerCode: string; fullName: string; mobile: string } }) => void;
   fetchCustomerProfile: () => Promise<void>;
   logout: () => void;
+  updateCustomerProfileAsync: (payload: { fullName: string; email?: string; alternatePhone?: string }) => Promise<{ success: boolean; message?: string }>;
+  uploadCustomerProfileImageAsync: (file: File | Blob) => Promise<{ success: boolean; message?: string; data?: any }>;
 
   // Membership Benefits
   isMember: boolean;
@@ -402,9 +404,9 @@ export const useStore = create<AppState>()(
       setGuestMode: (val) => set({ guestMode: val }),
       userPhone: "+91 98765 01928",
       userName: "Rohan Verma",
-      userAvatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80",
+      userAvatar: "",
       userAlternatePhone: "",
-      userEmail: "mukund@kvtmedia.com",
+      userEmail: "",
       walletBalance: 1250,
       loyaltyPoints: 340,
       addresses: [],
@@ -760,25 +762,57 @@ export const useStore = create<AppState>()(
         try {
           const res = await getCurrentCustomerApi(token);
           if (res.success && res.data) {
+            const customer = res.data;
+            const rawAvatar = customer.profileImage || customer.avatar || customer.image || "";
+            const formattedAvatar = rawAvatar ? formatImageUrl(rawAvatar) : "";
+
             set({
               isLoggedIn: true,
               guestMode: false,
-              customerId: res.data.id,
-              customerCode: res.data.customerCode,
-              userName: res.data.fullName || get().userName,
-              userPhone: res.data.mobile || get().userPhone,
+              customerId: customer.id || customer._id || get().customerId,
+              customerCode: customer.customerCode || get().customerCode,
+              userName: customer.fullName || customer.name || get().userName,
+              userPhone: customer.mobile || customer.phone || get().userPhone,
+              userAlternatePhone: customer.alternatePhone || customer.altPhone || get().userAlternatePhone,
+              userEmail: customer.email || get().userEmail || "",
+              userAvatar: formattedAvatar,
             });
-          } else if (res && isAuthError(0, res.message)) {
-            handleTokenExpiration(res.message);
+          } else {
+            // When me API returns success: false -> immediately logout and display error toast
+            const errorMsg = res?.message || "Failed to authenticate session. Please log in again.";
+            get().logout();
+            handleTokenExpiration(errorMsg, "Authentication Failed");
           }
         } catch (err: any) {
           console.error("Error fetching customer profile:", err);
-          if (err && isAuthError(0, err?.message)) {
-            handleTokenExpiration(err.message);
-          }
+          const errorMsg = err?.message || "Network error while verifying customer profile.";
+          get().logout();
+          handleTokenExpiration(errorMsg, "Session Error");
         }
       },
-      logout: () => set({ isLoggedIn: false, guestMode: true, token: null, customerId: null, customerCode: null, userPhone: "", userName: "", userAvatar: "", userAlternatePhone: "", userEmail: "", bookings: [], cart: [], cartId: null, cartPricing: null, bookmarkedPackageIds: [], bookmarkedPackages: [] }),
+      logout: () => {
+        try {
+          sessionStorage.removeItem("helpmate_redirect");
+        } catch {}
+        set({
+          isLoggedIn: false,
+          guestMode: true,
+          token: null,
+          customerId: null,
+          customerCode: null,
+          userPhone: "",
+          userName: "",
+          userAvatar: "",
+          userAlternatePhone: "",
+          userEmail: "",
+          bookings: [],
+          cart: [],
+          cartId: null,
+          cartPricing: null,
+          bookmarkedPackageIds: [],
+          bookmarkedPackages: [],
+        });
+      },
       updateProfile: (name, phone, alternatePhone, avatar, email) =>
         set((state) => ({
           userName: name,
@@ -787,6 +821,66 @@ export const useStore = create<AppState>()(
           ...(avatar !== undefined ? { userAvatar: avatar } : {}),
           ...(email !== undefined ? { userEmail: email } : {}),
         })),
+      updateCustomerProfileAsync: async (payload) => {
+        const token = get().token;
+        if (!token) {
+          return { success: false, message: "Authentication required" };
+        }
+        try {
+          const res = await updateCustomerProfileApi(token, {
+            fullName: payload.fullName,
+            ...(payload.email ? { email: payload.email } : {}),
+            ...(payload.alternatePhone ? { alternatePhone: payload.alternatePhone } : {}),
+          });
+          if (res.success) {
+            set((state) => ({
+              userName: payload.fullName,
+              ...(payload.email !== undefined ? { userEmail: payload.email } : {}),
+              ...(payload.alternatePhone !== undefined ? { userAlternatePhone: payload.alternatePhone } : {}),
+            }));
+            return { success: true, message: res.message };
+          }
+          return { success: false, message: res.message || "Failed to update profile." };
+        } catch (err: any) {
+          return { success: false, message: err?.message || "Network error." };
+        }
+      },
+      uploadCustomerProfileImageAsync: async (file) => {
+        const token = get().token;
+        if (!token) {
+          return { success: false, message: "Authentication required" };
+        }
+        try {
+          const res = await uploadCustomerProfileImageApi(token, file);
+          if (res.success) {
+            const uploadedImg =
+              res.data?.profileImage ||
+              res.data?.avatar ||
+              res.data?.image ||
+              (typeof res.data === "string" ? res.data : "");
+            if (uploadedImg) {
+              const formatted = formatImageUrl(uploadedImg);
+              set({ userAvatar: formatted });
+            }
+            // Sync all customer details from me API
+            await get().fetchCustomerProfile();
+            return {
+              success: true,
+              message: res.message || "Profile image updated successfully.",
+              data: res.data,
+            };
+          }
+          return {
+            success: false,
+            message: res.message || "Failed to upload profile image.",
+          };
+        } catch (err: any) {
+          return {
+            success: false,
+            message: err?.message || "Network error while uploading profile image.",
+          };
+        }
+      },
       addWalletFunds: (amount) => set((state) => ({ walletBalance: state.walletBalance + amount })),
       redeemLoyaltyPoints: (points) => set((state) => ({ loyaltyPoints: Math.max(0, state.loyaltyPoints - points) })),
 

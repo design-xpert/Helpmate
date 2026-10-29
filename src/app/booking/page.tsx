@@ -360,7 +360,6 @@ function BookingContent() {
               spread: 80,
               origin: { y: 0.5 }
             });
-            toast.success("Booking Confirmed!", "Your service appointment has been booked successfully.");
           } else {
             toast.error("Booking Failed", res.message || "Failed to create booking. Please try again.");
           }
