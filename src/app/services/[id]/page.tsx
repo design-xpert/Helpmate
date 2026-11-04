@@ -2703,7 +2703,7 @@ function ServiceDetailPageContent({ params }: PageProps) {
                                           {/* Addons List */}
                                           {item.addons && item.addons.length > 0 && (
                                             <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                                              <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1">Addons Included:</span>
+                                              <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1">Addons:</span>
                                               <div className="flex flex-wrap gap-1.5">
                                                 {item.addons.map((addon: any) => (
                                                   <span key={addon._id || addon.id} className="text-[9px] font-bold bg-accent-lux/10 text-accent-lux px-2 py-0.5 rounded-full">
